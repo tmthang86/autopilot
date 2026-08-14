@@ -1,0 +1,32 @@
+{
+  "project": {
+    "name": "CHANGE_ME",
+    "main_branch": "main",
+    "work_branch": "autopilot/main"
+  },
+  "queue": {
+    "ready_label": "autopilot",
+    "exclude_labels": ["blocked", "needs-human", "status:in-progress"],
+    "depends_pattern": "Depends on #([0-9]+)"
+  },
+  "agent": {
+    "permission_mode": "bypassPermissions",
+    "default_model": "sonnet",
+    "default_effort": "low",
+    "turn_timeout_s": 2700,
+    "max_budget_usd": 5.0
+  },
+  "verify": [
+    {"name": "example", "cmd": "true"}
+  ],
+  "pacing": {
+    "daily_task_cap": 12,
+    "quiet_hours": [],
+    "max_attempts_per_issue": 2,
+    "circuit_breaker_failures": 3
+  },
+  "autonomy": {
+    "default": "full",
+    "prepare_only_label": "needs-human"
+  }
+}

@@ -264,7 +264,7 @@ Create `templates/config.json`:
   },
   "autonomy": {
     "default": "full",
-    "prepare_only_labels": []
+    "prepare_only_label": "needs-human"
   }
 }
 ```
@@ -756,7 +756,7 @@ watching it. The daily counter resets on date rollover for the same reason."
 
 **Interfaces:**
 - Consumes: `lib/log.sh`, `lib/config.sh`
-- Produces: `queue_candidates` (prints the raw `gh issue list --json` payload), `queue_deps body` (prints each dependency number on its own line), `queue_is_closed number` (0 if closed or absent), `queue_pick` (prints the number of the first eligible issue, empty if none), `queue_field number key` (prints one field of a cached issue), `queue_claim number`, `queue_release number`.
+- Produces: `queue_candidates` (prints the raw `gh issue list --json` payload), `queue_deps body` (prints each dependency number on its own line), `queue_is_closed number` (0 if closed or absent), `queue_pick` (prints the number of the first eligible issue, empty if none), `queue_field number key` (prints one field of a cached issue), `queue_has_label number label` (returns 0 if the issue carries that label), `queue_claim number`, `queue_release number`.
 
 - [ ] **Step 1: Record the fixture**
 
@@ -819,6 +819,23 @@ JSON
   *) echo "{}" ;;
 esac'
 assert_eq "10" "$(queue_pick)" "issue becomes eligible once its dependency closes"
+
+# Label reading must use the labels array, never the title or body. An issue
+# whose body merely mentions "needs-human" is not labelled needs-human, and
+# reading it as such would leave real work permanently open.
+stub_bin gh 'case "$*" in
+  *"issue list"*) cat <<JSON
+[{"number":20,"title":"Real one","body":"This is not needs-human work","labels":[{"name":"autopilot"}],"milestone":null},
+ {"number":21,"title":"Human one","body":"plain","labels":[{"name":"autopilot"},{"name":"needs-human"}],"milestone":null}]
+JSON
+  ;;
+  *) echo "{}" ;;
+esac'
+queue_pick >/dev/null
+if queue_has_label 21 "needs-human"; then rc=0; else rc=1; fi
+assert_eq "0" "$rc" "a genuinely labelled issue is detected"
+if queue_has_label 20 "needs-human"; then rc=0; else rc=1; fi
+assert_eq "1" "$rc" "a body mentioning the label is NOT treated as labelled"
 
 # An empty queue is a normal outcome, not an error.
 stub_bin gh 'case "$*" in *"issue list"*) echo "[]" ;; *) echo "{}" ;; esac'
@@ -894,6 +911,14 @@ queue_field() {
     printf '%s' "$QUEUE_CACHE" | jq -r ".[] | select(.number == $1) | .$2 // \"\""
 }
 
+# Reads the issue's actual labels. Never search the title or body for a label
+# name — an issue whose body merely mentions "needs-human" is not labelled.
+queue_has_label() {
+    printf '%s' "$QUEUE_CACHE" \
+        | jq -e --arg l "$2" ".[] | select(.number == $1) | .labels[]? | select(.name == \$l)" \
+          >/dev/null 2>&1
+}
+
 queue_claim()   { gh issue edit "$1" --add-label "status:in-progress" >/dev/null 2>&1; }
 queue_release() { gh issue edit "$1" --remove-label "status:in-progress" >/dev/null 2>&1; }
 ```
@@ -901,7 +926,7 @@ queue_release() { gh issue edit "$1" --remove-label "status:in-progress" >/dev/n
 - [ ] **Step 5: Run it and confirm it passes**
 
 Run: `sh tests/test_queue.sh`
-Expected: `8 run, 0 failed`
+Expected: `10 run, 0 failed`
 
 - [ ] **Step 6: Commit**
 
@@ -1508,10 +1533,11 @@ case "$(agent_classify "$RUN_LOG" "$RC")" in
         state_set_num backoff_step 0
         if verify_run "$PROJECT"; then
             state_set_num consecutive_failures 0
-            PREPARE=0
-            for L in $(cfg_list autonomy.prepare_only_labels); do
-                printf '%s' "$BODY$TITLE" | grep -q "$L" && PREPARE=1
-            done
+            if queue_has_label "$ISSUE" "$(cfg_get autonomy.prepare_only_label needs-human)"; then
+                PREPARE=1
+            else
+                PREPARE=0
+            fi
             settle_success "$PROJECT" "$ISSUE" "$TITLE" "$PREPARE"
         else
             state_bump consecutive_failures >/dev/null

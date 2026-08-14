@@ -23,7 +23,7 @@ cover.
 ## Design
 
 ```
-scheduler   (launchd on macOS: RunAtLoad + StartInterval)
+scheduler   (launchd on macOS: StartInterval, started by hand)
     │
     ▼
 run-once.sh
@@ -52,7 +52,20 @@ a project is written in.
 
 ## Status
 
-Design complete, implementation not started. See [docs/plans/](docs/plans/).
+The runner works and is covered by 166 tests. Not yet exercised end to end against a live
+repository with the real agent — that is the last step, and until it happens nothing here should be
+described as proven.
+
+```sh
+sh install-project.sh /path/to/project   # writes the job, starts nothing
+sh ctl.sh start /path/to/project          # begins a session
+sh ctl.sh stop  /path/to/project          # ends it, across reboots too
+```
+
+**The loop runs only in a session you started.** It does not resume by itself after a reboot; see
+[ADR-0002](docs/decisions/0002-off-until-explicitly-started.md) for why, and what that costs.
+
+Full instructions: [docs/guides/install.md](docs/guides/install.md).
 
 ## Safety
 

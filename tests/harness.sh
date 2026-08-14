@@ -49,7 +49,9 @@ make_repo() {
     echo "seed" > "$_dir/seed.txt"
     git -C "$_dir" add -A
     git -C "$_dir" commit -q -m "seed"
-    printf '%s' "$_dir"
+    # Canonicalised: TMPDIR often ends in a slash, and anything that resolves
+    # the path will normalise the double slash away, breaking string compares.
+    (cd "$_dir" && pwd)
 }
 
 # stub_bin gh 'echo {}'  → a fake `gh` that prints {}

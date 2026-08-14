@@ -48,16 +48,16 @@ queue_pick() {
         _skip=0
         for _ex in $_excluded; do
             for _lb in $_labels; do
-                [ "$_lb" = "$_ex" ] && _skip=1
+                if [ "$_lb" = "$_ex" ]; then _skip=1; fi
             done
         done
-        [ "$_skip" -eq 1 ] && continue
+        if [ "$_skip" -eq 1 ]; then continue; fi
 
         _blocked=0
         for _dep in $(queue_deps "$_body"); do
             queue_is_closed "$_dep" || _blocked=1
         done
-        [ "$_blocked" -eq 1 ] && continue
+        if [ "$_blocked" -eq 1 ]; then continue; fi
 
         printf '%s' "$_num"
         return 0

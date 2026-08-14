@@ -1,7 +1,10 @@
 #!/bin/sh
 # The verification gate. Nothing gets committed unless this returns 0.
 
+# Read by the caller to build the failure report on the issue.
+# shellcheck disable=SC2034
 VERIFY_FAILED_NAME=""
+# shellcheck disable=SC2034
 VERIFY_OUTPUT=""
 
 verify_run() {

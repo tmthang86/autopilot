@@ -31,7 +31,9 @@ agent_prompt() {
 
 agent_run() {
     _prompt=$1; _cwd=$2; _log=$3
-    # shellcheck disable=SC2086
+    # The unquoted expansion is deliberate: agent_args returns a flag list that
+    # must split into separate arguments.
+    # shellcheck disable=SC2046,SC2086
     ( cd "$_cwd" && claude $(agent_args "${AGENT_MODEL:-sonnet}" "${AGENT_EFFORT:-low}") "$_prompt" ) \
         > "$_log" 2>&1
 }

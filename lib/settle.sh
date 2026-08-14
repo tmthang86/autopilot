@@ -17,7 +17,12 @@ settle_success() {
     _root=$1; _num=$2; _title=$3; _prepare_only=$4
     _settle_guard_branch "$_root" || return 1
 
-    git -C "$_root" add -A
+    # .autopilot/ is excluded from the commit as well as from the clean. Commit
+    # it once and the next `git reset --hard` restores state.json to whatever it
+    # held then — silently discarding resume_after, the daily counter, and the
+    # failure count. The runner would forget its own usage-limit backoff and
+    # hammer a closed door.
+    git -C "$_root" add -A -- ':(exclude).autopilot'
     if git -C "$_root" diff --cached --quiet; then
         log_warn "nothing to commit for #$_num"
     else
@@ -43,9 +48,13 @@ Closes #$_num"
     return 0
 }
 
+# .autopilot/ is excluded from the clean. Without the exclusion the runner
+# deletes its own config, state, and logs on the first failed task — after
+# which the scheduler keeps firing into a project that no longer has a
+# configuration, forever, with nobody watching.
 _settle_reset() {
     git -C "$1" reset -q --hard
-    git -C "$1" clean -qfd
+    git -C "$1" clean -qfd -e .autopilot
 }
 
 settle_failure() {

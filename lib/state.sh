@@ -16,7 +16,7 @@ _STATE_DEFAULTS='{
 state_init() {
     AUTOPILOT_STATE_FILE=$1
     if [ ! -f "$AUTOPILOT_STATE_FILE" ] || ! jq -e . "$AUTOPILOT_STATE_FILE" >/dev/null 2>&1; then
-        [ -f "$AUTOPILOT_STATE_FILE" ] && log_warn "state file unreadable, rebuilding from defaults"
+        if [ -f "$AUTOPILOT_STATE_FILE" ]; then log_warn "state file unreadable, rebuilding from defaults"; fi
         mkdir -p "$(dirname "$AUTOPILOT_STATE_FILE")"
         printf '%s\n' "$_STATE_DEFAULTS" > "$AUTOPILOT_STATE_FILE"
     fi

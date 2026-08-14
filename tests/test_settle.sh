@@ -20,7 +20,7 @@ settle_success "$repo" 42 "Add a thing" 0 2>/dev/null
 msg=$(git -C "$repo" log -1 --pretty=%B)
 assert_contains "$msg" "Add a thing" "the commit subject is the issue title"
 assert_contains "$msg" "Closes #42"  "the commit carries the closing trailer"
-assert_eq "" "$(git -C "$repo" status --porcelain)" "the working tree is clean after settling"
+assert_eq "" "$(git -C "$repo" status --porcelain -- ':(exclude).autopilot')" "the working tree is clean after settling"
 assert_contains "$(cat "$GH_CALLS")" "issue close 42" "the issue is closed on full autonomy"
 
 # prepare_only work is committed but NOT closed. If the runner could close work
@@ -41,16 +41,29 @@ mkdir -p "$repo/junkdir" && echo x > "$repo/junkdir/x"
 : > "$GH_CALLS"
 before=$(git -C "$repo" rev-parse HEAD)
 settle_failure "$repo" 44 "verify" "clippy said no" 2>/dev/null
-assert_eq "" "$(git -C "$repo" status --porcelain)" "failure resets the working tree"
+assert_eq "" "$(git -C "$repo" status --porcelain -- ':(exclude).autopilot')" "failure resets the working tree"
 assert_eq "$before" "$(git -C "$repo" rev-parse HEAD)" "failure creates no commit"
 assert_contains "$(cat "$GH_CALLS")" "issue comment 44" "the failure is reported on the issue"
 assert_contains "$(cat "$GH_CALLS")" "clippy said no" "the failure detail reaches the comment"
+
+# The runner must never delete its own directory. .autopilot/ is untracked in a
+# project that has not committed its config, and a plain `git clean -fd` would
+# wipe config, state, and logs on the first failed task — after which the
+# scheduler fires forever into a project that has no configuration.
+mkdir -p "$repo/.autopilot/logs"
+echo '{"marker":1}' > "$repo/.autopilot/config.json"
+echo '{"tasks_today":3}' > "$repo/.autopilot/state.json"
+echo "trash" > "$repo/untracked-junk.txt"
+settle_failure "$repo" 99 "verify" "detail" 2>/dev/null
+assert_eq "1" "$([ -f "$repo/.autopilot/config.json" ] && echo 1 || echo 0)" "the runner's config survives a failure reset"
+assert_eq "1" "$([ -f "$repo/.autopilot/state.json" ] && echo 1 || echo 0)" "the runner's state survives a failure reset"
+assert_eq "0" "$([ -f "$repo/untracked-junk.txt" ] && echo 1 || echo 0)" "ordinary untracked junk is still cleaned"
 
 # Blocked work is reset and labelled, never guessed at.
 echo "half" > "$repo/half.txt"
 : > "$GH_CALLS"
 settle_blocked "$repo" 45 "Which database?" 2>/dev/null
-assert_eq "" "$(git -C "$repo" status --porcelain)" "blocking resets the working tree"
+assert_eq "" "$(git -C "$repo" status --porcelain -- ':(exclude).autopilot')" "blocking resets the working tree"
 calls=$(cat "$GH_CALLS")
 assert_contains "$calls" "blocked"          "the blocked label is applied"
 assert_contains "$calls" "Which database?"  "the question reaches the issue"

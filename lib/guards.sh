@@ -68,12 +68,12 @@ guard_daily_cap() {
 # which is a test that passes 1,438 minutes a day and fails the other two.
 guard_quiet_hours() {
     _now=$(printf '%s' "${AUTOPILOT_NOW_HM:-$(date +%H%M)}" | sed 's/^0*//')
-    [ -z "$_now" ] && _now=0
+    if [ -z "$_now" ]; then _now=0; fi
     for _range in $(cfg_list pacing.quiet_hours); do
         _from=$(printf '%s' "$_range" | cut -d- -f1 | tr -d ':' | sed 's/^0*//')
         _to=$(printf '%s' "$_range" | cut -d- -f2 | tr -d ':' | sed 's/^0*//')
-        [ -z "$_from" ] && _from=0
-        [ -z "$_to" ] && _to=0
+        if [ -z "$_from" ]; then _from=0; fi
+        if [ -z "$_to" ]; then _to=0; fi
         if [ "$_from" -le "$_to" ]; then
             if [ "$_now" -ge "$_from" ] && [ "$_now" -le "$_to" ]; then
                 log_info "inside quiet hours $_range"

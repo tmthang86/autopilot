@@ -1,6 +1,8 @@
 #!/bin/sh
 set -u
 cd "$(dirname "$0")" || exit 1
+AUTOPILOT_HOME=$(cd .. && pwd)
+export AUTOPILOT_HOME
 overall=0
 for t in test_*.sh; do
     [ -f "$t" ] || continue

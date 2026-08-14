@@ -34,11 +34,14 @@ export AUTOPILOT_LOG_FILE
 cfg_load "$AP/config.json" || exit 1
 state_init "$AP/state.json"
 
+queue_init "$PROJECT" || exit 1
+
 guard_all "$PROJECT" || exit 0
 # Released on every exit path, including the ones that have not been written
 # yet. A lock left held wedges the loop until a person notices.
 trap 'guard_unlock "$AP"' EXIT
 
+queue_load
 ISSUE=$(queue_pick)
 if [ -z "$ISSUE" ]; then
     log_info "queue is empty"
@@ -65,6 +68,11 @@ git -C "$PROJECT" checkout -q "$WORK_BRANCH" 2>/dev/null ||
     git -C "$PROJECT" checkout -q -b "$WORK_BRANCH"
 
 PROMPT=$(agent_prompt "$ISSUE" "$TITLE" "$BODY" "$WORK_BRANCH" "$(cfg_get project.name project)") || exit 1
+
+# Where the run began. Every rejection path rewinds to exactly this, because
+# the agent commits its own work and HEAD will have moved by then.
+AUTOPILOT_START_SHA=$(git -C "$PROJECT" rev-parse HEAD)
+export AUTOPILOT_START_SHA
 
 queue_claim "$ISSUE"
 state_bump tasks_today >/dev/null

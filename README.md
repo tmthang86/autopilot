@@ -52,9 +52,19 @@ a project is written in.
 
 ## Status
 
-The runner works and is covered by 166 tests. Not yet exercised end to end against a live
-repository with the real agent — that is the last step, and until it happens nothing here should be
-described as proven.
+Working, covered by 187 tests, and exercised end to end on 2026-08-14 against a real private
+repository with the real agent: issue claimed, work implemented, verification run, commit pushed,
+issue closed, `main` untouched. The rejection path was proven too — a red suite rewinds to the
+commit the run started from and leaves the issue open.
+
+Six runs were needed to get there. Seven defects survived the passing test suite and were found
+only by running for real, including one that turned the verification gate off whenever the agent
+committed its own work. All seven are written up in
+[docs/reference/observed-behaviour.md](docs/reference/observed-behaviour.md), which is the first
+thing to read before changing anything here.
+
+**Still unverified:** a run driven by launchd rather than by hand, and whether `stop` really
+survives a reboot.
 
 ```sh
 sh install-project.sh /path/to/project   # writes the job, starts nothing

@@ -13,6 +13,10 @@ cfg_load "$repo/.autopilot/config.json"
 GH_CALLS="$TEST_TMP/gh-calls.txt"; export GH_CALLS; : > "$GH_CALLS"
 stub_bin gh 'echo "$*" >> "$GH_CALLS"; exit 0'
 
+# A real project has a remote. Settling now refuses to close an issue whose work
+# has not reached it, so every success path here needs somewhere to push.
+git init -q --bare "$TEST_TMP/remote.git"
+git -C "$repo" remote add origin "$TEST_TMP/remote.git"
 git -C "$repo" checkout -q -b autopilot/main
 echo "work" > "$repo/new.txt"
 
@@ -22,6 +26,27 @@ assert_contains "$msg" "Add a thing" "the commit subject is the issue title"
 assert_contains "$msg" "Closes #42"  "the commit carries the closing trailer"
 assert_eq "" "$(git -C "$repo" status --porcelain -- ':(exclude).autopilot')" "the working tree is clean after settling"
 assert_contains "$(cat "$GH_CALLS")" "issue close 42" "the issue is closed on full autonomy"
+
+# The agent usually commits its own work, because it is told to run the checks.
+# The runner must still push: an issue closed while the commit sits on one
+# machine reads as delivered and is not.
+echo "agent work" > "$repo/agent.txt"
+git -C "$repo" add -A && git -C "$repo" commit -q -m "committed by the agent"
+: > "$GH_CALLS"
+settle_success "$repo" 50 "Agent committed" 0 2>/dev/null
+assert_eq "" "$(git -C "$repo" status -sb | grep -o 'ahead [0-9]*' || true)" "the agent's own commit is pushed too"
+assert_contains "$(cat "$GH_CALLS")" "issue close 50" "the issue closes once the work is really on the remote"
+
+# A push that fails must leave the issue open. Closing it would report work as
+# delivered while it exists only on this machine.
+git -C "$repo" remote set-url origin "$TEST_TMP/does-not-exist.git"
+echo "more" > "$repo/unpushable.txt"
+: > "$GH_CALLS"
+if settle_success "$repo" 51 "Cannot push" 0 2>/dev/null; then rc=0; else rc=1; fi
+assert_eq "1" "$rc" "a failed push is reported as a failure"
+case "$(cat "$GH_CALLS")" in *"issue close 51"*) closed=1 ;; *) closed=0 ;; esac
+assert_eq "0" "$closed" "an issue is NOT closed when the push failed"
+git -C "$repo" remote set-url origin "$TEST_TMP/remote.git"
 
 # prepare_only work is committed but NOT closed. If the runner could close work
 # whose correctness lives on a screen, the Definition of Done would become a
@@ -34,6 +59,20 @@ assert_contains "$calls" "needs-human" "prepare-only work is labelled for a huma
 case "$calls" in *"issue close 43"*) closed=1 ;; *) closed=0 ;; esac
 assert_eq "0" "$closed" "prepare-only work is NOT closed by the runner"
 assert_contains "$(git -C "$repo" log -1 --pretty=%B)" "Closes #43" "prepare-only work is still committed"
+
+# The agent normally commits its own work before the harness verifies it, so by
+# the time verification fails HEAD has already moved. Rewinding to HEAD would
+# discard only the uncommitted remainder and leave the rejected commit standing
+# — turning the verification gate off in exactly the case it exists for.
+AUTOPILOT_START_SHA=$(git -C "$repo" rev-parse HEAD)
+export AUTOPILOT_START_SHA
+echo "rejected work" > "$repo/rejected.txt"
+git -C "$repo" add -A && git -C "$repo" commit -q -m "committed by the agent, then rejected"
+: > "$GH_CALLS"
+settle_failure "$repo" 52 "verify" "suite went red" 2>/dev/null
+assert_eq "$AUTOPILOT_START_SHA" "$(git -C "$repo" rev-parse HEAD)" "a rejected agent commit is rewound, not kept"
+assert_eq "0" "$([ -f "$repo/rejected.txt" ] && echo 1 || echo 0)" "the rejected work is gone from the tree"
+unset AUTOPILOT_START_SHA
 
 # A failed run must leave nothing behind — no partial commit, no stray files.
 echo "junk" > "$repo/junk.txt"

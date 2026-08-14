@@ -7,7 +7,10 @@ agent_args() {
         bypassPermissions) _perm="--dangerously-skip-permissions" ;;
         *)                 _perm="--permission-mode $_mode" ;;
     esac
-    printf -- '-p --output-format stream-json --verbose %s --model %s --effort %s --max-budget-usd %s --add-dir .' \
+    # --add-dir takes a variadic list, so it must not be last: a positional
+    # prompt placed after it is swallowed as another directory, and the CLI then
+    # reports it received no input at all.
+    printf -- '-p --add-dir . --output-format stream-json --verbose %s --model %s --effort %s --max-budget-usd %s' \
         "$_perm" "$1" "$2" "$(cfg_get agent.max_budget_usd 5.0)"
 }
 
@@ -29,12 +32,16 @@ agent_prompt() {
     printf '\n%s\n' "$_body"
 }
 
+# The prompt goes in on stdin rather than as an argument. A task description is
+# arbitrary text — it can begin with a dash, contain anything, and be long — and
+# stdin is immune to all of that as well as to flag ordering.
 agent_run() {
     _prompt=$1; _cwd=$2; _log=$3
     # The unquoted expansion is deliberate: agent_args returns a flag list that
     # must split into separate arguments.
     # shellcheck disable=SC2046,SC2086
-    ( cd "$_cwd" && claude $(agent_args "${AGENT_MODEL:-sonnet}" "${AGENT_EFFORT:-low}") "$_prompt" ) \
+    ( cd "$_cwd" && printf '%s' "$_prompt" \
+        | claude $(agent_args "${AGENT_MODEL:-sonnet}" "${AGENT_EFFORT:-low}") ) \
         > "$_log" 2>&1
 }
 
@@ -53,15 +60,30 @@ agent_classify() {
         return 0
     fi
 
-    # A rate_limit_event whose status is anything but "allowed" is decisive on
-    # its own — no probe needed, no payload parsing beyond the status.
-    if grep -q '"rate_limit_info"' "$_log" 2>/dev/null &&
-       ! grep -q '"status":"allowed"' "$_log" 2>/dev/null; then
+    # Throttling announces itself with its own event type. Checking the status
+    # only on those lines keeps an unrelated "allowed" elsewhere in the stream
+    # from masking a real rejection.
+    if grep '"type":"rate_limit_event"' "$_log" 2>/dev/null \
+        | grep -qv '"status":"allowed"'; then
         printf 'usage_limit'
         return 0
     fi
 
-    if [ "$_rc" -eq 0 ] && ! grep -q '"is_error":true' "$_log" 2>/dev/null; then
+    # Only the final result event decides the outcome. Scanning the whole stream
+    # for is_error:true also catches tool_result entries, where it means one
+    # shell command exited non-zero — an ordinary event inside a completely
+    # successful task. Treating that as failure discards finished work.
+    _final=$(grep '"type":"result"' "$_log" 2>/dev/null | tail -1)
+    if [ -n "$_final" ]; then
+        # Not `.is_error // true`: jq's alternative operator treats false the
+        # same as null, so that expression reports every successful run as an
+        # error. The same trap bit state.sh reading a stored zero.
+        _err=$(printf '%s' "$_final" | jq -r 'if .is_error == false then "false" else "true" end' 2>/dev/null)
+        if [ "$_rc" -eq 0 ] && [ "$_err" = "false" ]; then
+            printf 'ok'
+            return 0
+        fi
+    elif [ "$_rc" -eq 0 ]; then
         printf 'ok'
         return 0
     fi

@@ -36,6 +36,18 @@ fix="$REPO_ROOT/tests/fixtures/claude-result-success.json"
 assert_eq "false" "$(jq -r .is_error "$fix")" "recorded success envelope has is_error false"
 assert_eq "result" "$(jq -r .type "$fix")"    "recorded envelope is a result"
 
+# --add-dir is variadic, so it must never be the last flag: a positional prompt
+# after it is swallowed as another directory and the CLI reports no input.
+last=$(printf '%s' "$args" | awk '{print $NF}')
+assert_eq "0" "$([ "$last" = "." ] && echo 1 || echo 0)" "--add-dir is not the final flag"
+
+# The prompt is delivered on stdin, which is immune to flag order and to a task
+# description that happens to begin with a dash.
+STDIN_SEEN="$TEST_TMP/stdin.txt"; export STDIN_SEEN
+stub_bin claude 'cat > "$STDIN_SEEN"; echo "{\"type\":\"result\",\"is_error\":false}"'
+agent_run "TASK BODY HERE" "$repo" "$TEST_TMP/ar.log"
+assert_eq "TASK BODY HERE" "$(cat "$STDIN_SEEN")" "the prompt reaches the agent on stdin"
+
 log="$TEST_TMP/run.log"
 
 # --- classification ---
@@ -54,6 +66,28 @@ assert_eq "" "$(cat "$PROBE_MARK")" "a decisive stream signal skips the probe en
 printf '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}
 {"type":"result","is_error":false,"result":"done"}\n' > "$log"
 assert_eq "ok" "$(agent_classify "$log" 0)" "an allowed rate_limit_event is not throttling"
+
+# A tool_result carrying is_error:true is an ordinary event: one shell command
+# inside the session exited non-zero. Reading it as task failure discards work
+# the agent actually finished — the run gets reset --hard and the commit is gone.
+cat > "$log" <<'STREAM'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1"}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Exit code 1","is_error":true,"tool_use_id":"t1"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"done"}
+STREAM
+assert_eq "ok" "$(agent_classify "$log" 0)" "a failed tool call inside a successful run is not a task failure"
+
+# The final result event is what decides, even when earlier events look clean.
+cat > "$log" <<'STREAM'
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","is_error":false}]}}
+{"type":"result","subtype":"error_during_execution","is_error":true,"result":"boom"}
+STREAM
+stub_bin claude 'exit 0'
+assert_eq "task_failure" "$(agent_classify "$log" 1)" "a failing final result is a task failure"
+
+# A stream with no result event at all and a clean exit is still ok.
+printf '{"type":"assistant","message":{}}\n' > "$log"
+assert_eq "ok" "$(agent_classify "$log" 0)" "a stream with no result event and exit 0 is ok"
 
 # Ambiguous failure, probe succeeds → the task is at fault.
 printf '{"type":"result","is_error":true,"result":"compile error"}\n' > "$log"

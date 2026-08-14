@@ -48,6 +48,9 @@ never closed, because their correctness needs a person to look. Defaults to `nee
 
 Commit `config.json`. It is the contract between the project and the runner.
 
+Because it is tracked, **an uncommitted edit to it is reverted** the moment any rejection path runs
+`git reset --hard`. Edit, commit, then start.
+
 ## Start and stop
 
 ```sh

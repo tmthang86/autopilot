@@ -9,6 +9,39 @@ mkdir -p "$repo/.autopilot"
 cp "$REPO_ROOT/templates/config.json" "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 
+# --- the repository must be named explicitly on every gh call ---
+# gh resolves the repo from the current working directory. The runner is started
+# from wherever the scheduler happens to be, so without an explicit --repo a run
+# for one project reads, claims, and closes issues in another.
+git -C "$repo" remote add origin "https://github.com/someone/thing.git"
+if queue_init "$repo" >/dev/null 2>&1; then rc=0; else rc=1; fi
+assert_eq "0" "$rc" "queue_init accepts an https origin"
+assert_eq "someone/thing" "$AUTOPILOT_REPO" "the slug is derived from an https remote"
+
+git -C "$repo" remote set-url origin "git@github.com:other/proj.git"
+queue_init "$repo" >/dev/null 2>&1
+assert_eq "other/proj" "$AUTOPILOT_REPO" "the slug is derived from an ssh remote"
+
+noremote=$(make_repo)
+if queue_init "$noremote" >/dev/null 2>&1; then rc=0; else rc=1; fi
+assert_eq "1" "$rc" "a project with no origin remote is refused"
+
+git -C "$repo" remote set-url origin "https://github.com/someone/thing.git"
+queue_init "$repo" >/dev/null 2>&1
+
+GH_ARGS="$TEST_TMP/gh-args.txt"; export GH_ARGS; : > "$GH_ARGS"
+stub_bin gh 'echo "$*" >> "$GH_ARGS"
+case "$*" in
+  *"issue list"*) echo "[{\"number\":1,\"title\":\"t\",\"body\":\"b\",\"labels\":[{\"name\":\"autopilot\"}],\"milestone\":null}]" ;;
+  *"issue view"*) echo "CLOSED" ;;
+  *) echo "{}" ;;
+esac'
+queue_load; queue_pick >/dev/null
+queue_claim 1
+queue_release 1
+missing=$(grep -vc -- "--repo someone/thing" "$GH_ARGS" || true)
+assert_eq "0" "$missing" "every gh call names the repository explicitly"
+
 # --- dependency parsing: pure text work, tested on its own ---
 assert_eq "7" "$(queue_deps 'Blah blah. Depends on #7. More text.')" "single dependency parsed"
 two=$(queue_deps 'Depends on #7
@@ -35,7 +68,7 @@ JSON
   *"issue view"*) echo "OPEN" ;;
   *) echo "{}" ;;
 esac'
-assert_eq "11" "$(queue_pick)" "a blocked issue is skipped in favour of its dependency"
+queue_load; assert_eq "11" "$(queue_pick)" "a blocked issue is skipped in favour of its dependency"
 
 # Once the dependency is closed, the blocked issue becomes eligible.
 stub_bin gh 'case "$*" in
@@ -46,7 +79,7 @@ JSON
   *"issue view"*) echo "CLOSED" ;;
   *) echo "{}" ;;
 esac'
-assert_eq "10" "$(queue_pick)" "issue becomes eligible once its dependency closes"
+queue_load; assert_eq "10" "$(queue_pick)" "issue becomes eligible once its dependency closes"
 
 # An unreadable dependency state must leave the dependent blocked. Failing the
 # other way lets work run before the thing it depends on exists, and the damage
@@ -59,7 +92,7 @@ JSON
   *"issue view"*) exit 1 ;;
   *) echo "{}" ;;
 esac'
-assert_eq "" "$(queue_pick 2>/dev/null)" "an unreadable dependency state keeps the dependent blocked"
+queue_load; assert_eq "" "$(queue_pick 2>/dev/null)" "an unreadable dependency state keeps the dependent blocked"
 
 stub_bin gh 'case "$*" in
   *"issue list"*) cat <<JSON
@@ -69,7 +102,7 @@ JSON
   *"issue view"*) echo "some unexpected payload" ;;
   *) echo "{}" ;;
 esac'
-assert_eq "" "$(queue_pick 2>/dev/null)" "an unrecognised state payload keeps the dependent blocked"
+queue_load; assert_eq "" "$(queue_pick 2>/dev/null)" "an unrecognised state payload keeps the dependent blocked"
 
 # --- excluded labels ---
 stub_bin gh 'case "$*" in
@@ -80,7 +113,7 @@ JSON
   ;;
   *) echo "{}" ;;
 esac'
-assert_eq "31" "$(queue_pick)" "an excluded label removes an issue from the queue"
+queue_load; assert_eq "31" "$(queue_pick)" "an excluded label removes an issue from the queue"
 
 # --- label reading must use the labels array, never the prose ---
 # An issue whose body merely mentions needs-human is not labelled needs-human.
@@ -94,19 +127,39 @@ JSON
   ;;
   *) echo "{}" ;;
 esac'
-queue_pick >/dev/null
+queue_load; queue_pick >/dev/null
 if queue_has_label 21 "needs-human"; then rc=0; else rc=1; fi
 assert_eq "0" "$rc" "a genuinely labelled issue is detected"
 if queue_has_label 20 "needs-human"; then rc=0; else rc=1; fi
 assert_eq "1" "$rc" "a body mentioning the label is NOT treated as labelled"
 assert_eq "Real one" "$(queue_field 20 title)" "queue_field reads a cached field"
 
+# --- the cache must survive the caller's subshell ---
+# The runner does exactly `ISSUE=$(queue_pick)`. Command substitution runs in a
+# subshell, so a cache populated inside queue_pick would vanish on return: the
+# title and body would render empty into the agent's prompt, and every label
+# lookup would come back false — closing a needs-human issue automatically.
+stub_bin gh 'case "$*" in
+  *"issue list"*) cat <<JSON
+[{"number":77,"title":"Real title","body":"Real body","labels":[{"name":"autopilot"},{"name":"model:opus"}],"milestone":null}]
+JSON
+  ;;
+  *) echo "{}" ;;
+esac'
+queue_load
+picked=$(queue_pick)
+assert_eq "77" "$picked" "the issue is picked through command substitution"
+assert_eq "Real title" "$(queue_field "$picked" title)" "the title survives the caller's subshell"
+assert_eq "Real body"  "$(queue_field "$picked" body)"  "the body survives the caller's subshell"
+if queue_has_label "$picked" "model:opus"; then rc=0; else rc=1; fi
+assert_eq "0" "$rc" "label lookups still work after picking in a subshell"
+
 # --- empty queue is a normal outcome, not an error ---
 stub_bin gh 'case "$*" in *"issue list"*) echo "[]" ;; *) echo "{}" ;; esac'
-assert_eq "" "$(queue_pick)" "empty queue yields empty, not an error"
+queue_load; assert_eq "" "$(queue_pick)" "empty queue yields empty, not an error"
 
 # --- gh failing must not look like an empty queue forever, but must not crash ---
 stub_bin gh 'exit 1'
-assert_eq "" "$(queue_pick 2>/dev/null)" "a gh failure degrades to empty rather than crashing"
+queue_load; assert_eq "" "$(queue_pick 2>/dev/null)" "a gh failure degrades to empty rather than crashing"
 
 finish

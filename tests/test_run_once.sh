@@ -2,6 +2,13 @@
 . "$(dirname "$0")/harness.sh"
 
 repo=$(make_repo)
+# A real project has an origin the runner can both parse and push to. The slug
+# comes from the URL so gh is never left guessing from the caller's working
+# directory, and the push has to actually succeed — settling refuses to close an
+# issue whose work has not reached the remote.
+git init -q --bare "$TEST_TMP/tester-proj.git"
+git -C "$repo" remote add origin "$TEST_TMP/tester-proj.git"
+git -C "$repo" push -q origin main
 mkdir -p "$repo/.autopilot"
 jq '.verify = [{"name":"t","cmd":"true"}]' "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
 git -C "$repo" checkout -q -b autopilot/main

@@ -1,10 +1,10 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
 
-# Never touch the operator's real LaunchAgents directory from a test.
-AGENTS="$TEST_TMP/LaunchAgents"
-AUTOPILOT_LAUNCHAGENTS_DIR="$AGENTS"
-export AUTOPILOT_LAUNCHAGENTS_DIR
+# Never touch the operator's real launchd directories from a test.
+PLISTDIR="$TEST_TMP/plists"
+AUTOPILOT_PLIST_DIR="$PLISTDIR"
+export AUTOPILOT_PLIST_DIR
 
 LCTL_CALLS="$TEST_TMP/launchctl.txt"; export LCTL_CALLS; : > "$LCTL_CALLS"
 stub_bin launchctl 'echo "$*" >> "$LCTL_CALLS"; exit 0'
@@ -17,7 +17,7 @@ sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "1" "$([ -f "$repo/.autopilot/config.json" ] && echo 1 || echo 0)" "a config is created"
 assert_eq "$name" "$(jq -r .project.name "$repo/.autopilot/config.json")" "the project name is substituted"
 
-plist="$AGENTS/com.autopilot.$name.plist"
+plist="$PLISTDIR/launchd.plist"
 assert_eq "1" "$([ -f "$plist" ] && echo 1 || echo 0)" "the launchd plist is written"
 assert_contains "$(cat "$plist")" "1800"        "the interval is substituted"
 assert_contains "$(cat "$plist")" "$repo"       "the project path is substituted"
@@ -34,6 +34,22 @@ assert_eq "0" "$has" "the plist carries no RunAtLoad"
 # Installing must never start the loop. Enabling a program that runs with
 # permission checks disabled is the operator's decision, not the installer's.
 assert_eq "" "$(cat "$LCTL_CALLS")" "the installer does not load or start the job"
+
+# The plist must never land in ~/Library/LaunchAgents. launchd auto-loads
+# everything there at login, so a job left started before a reboot would come
+# back by itself — "off until you start it" would only hold if the operator
+# remembered to stop it first.
+sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+assert_eq "0" "$([ -f "$HOME/Library/LaunchAgents/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
+    "nothing is written into the auto-loaded LaunchAgents directory"
+
+# By default it lives beside the project it serves.
+unset AUTOPILOT_PLIST_DIR
+sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+assert_eq "1" "$([ -f "$repo/.autopilot/launchd.plist" ] && echo 1 || echo 0)" \
+    "the plist defaults to the project's own .autopilot directory"
+assert_contains "$(cat "$repo/.gitignore")" ".autopilot/launchd.plist" "the plist is gitignored"
+AUTOPILOT_PLIST_DIR="$PLISTDIR"; export AUTOPILOT_PLIST_DIR
 
 # --- gitignore ---
 gi=$(cat "$repo/.gitignore")

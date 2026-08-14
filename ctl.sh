@@ -21,8 +21,7 @@ PROJECT=$(cd "$PROJECT" && pwd)
 
 NAME=$(basename "$PROJECT")
 LABEL="com.autopilot.$NAME"
-AGENTS=${AUTOPILOT_LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}
-PLIST="$AGENTS/$LABEL.plist"
+PLIST="${AUTOPILOT_PLIST_DIR:-$PROJECT/.autopilot}/launchd.plist"
 TARGET="gui/$(id -u)"
 
 case "$ACTION" in

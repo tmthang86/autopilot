@@ -25,7 +25,10 @@ fi
 NAME=$(basename "$PROJECT")
 LABEL="com.autopilot.$NAME"
 AP="$PROJECT/.autopilot"
-AGENTS=${AUTOPILOT_LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}
+# Deliberately NOT ~/Library/LaunchAgents: launchd auto-loads everything there
+# at login, so a job left started before a reboot would come back by itself.
+# bootstrap accepts any path, so the job lives with the project it serves.
+PLIST_DIR=${AUTOPILOT_PLIST_DIR:-$AP}
 
 mkdir -p "$AP/logs"
 
@@ -38,14 +41,14 @@ else
 fi
 
 # config.json is meant to be committed; everything else here is local.
-for entry in ".autopilot/state.json" ".autopilot/logs/" ".autopilot/STOP" ".autopilot/lock/"; do
+for entry in ".autopilot/launchd.plist" ".autopilot/state.json" ".autopilot/logs/" ".autopilot/STOP" ".autopilot/lock/"; do
     if ! grep -qxF "$entry" "$PROJECT/.gitignore" 2>/dev/null; then
         printf '%s\n' "$entry" >> "$PROJECT/.gitignore"
     fi
 done
 
-mkdir -p "$AGENTS"
-PLIST="$AGENTS/$LABEL.plist"
+mkdir -p "$PLIST_DIR"
+PLIST="$PLIST_DIR/launchd.plist"
 sed -e "s|{{LABEL}}|$LABEL|g" \
     -e "s|{{RUNNER}}|$HERE/run-once.sh|g" \
     -e "s|{{PROJECT}}|$PROJECT|g" \
@@ -55,7 +58,7 @@ sed -e "s|{{LABEL}}|$LABEL|g" \
 
 cat <<EOF
 
-Wrote $PLIST
+Wrote $PLIST (deliberately not in ~/Library/LaunchAgents, which launchd auto-loads)
 The job is NOT running. Review $AP/config.json first, then:
 
   sh $HERE/ctl.sh start $PROJECT

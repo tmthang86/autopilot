@@ -5,8 +5,11 @@ coding agent to implement it, proves the result with the project's own verificat
 commits, and exits.
 
 It is deliberately not a daemon. Every run is a process that starts, does at most one task, and
-dies. All state lives on disk. That is what lets it survive sleep, reboot, and an exhausted
-usage window without supervision.
+dies. All state lives on disk, so sleeping the machine or exhausting the usage window costs
+nothing — the next run picks up where the last one left off.
+
+It does **not** survive a reboot on purpose. The loop runs only in a session you started; see
+[ADR-0002](docs/decisions/0002-off-until-explicitly-started.md).
 
 ## What it is for
 
@@ -41,10 +44,12 @@ The runner is installed once per machine. Everything project-specific lives in a
 that the project itself commits:
 
 ```
-~/.local/share/autopilot/        this repository — installed once, shared
-<project>/.autopilot/config.yml  committed by the project — the contract
-<project>/.autopilot/state.json  not committed
-<project>/.autopilot/STOP        not committed — kill switch
+~/.local/share/autopilot/           this repository — installed once, shared
+<project>/.autopilot/config.json    committed by the project — the contract
+<project>/.autopilot/launchd.plist  not committed — machine-specific paths
+<project>/.autopilot/state.json     not committed
+<project>/.autopilot/logs/          not committed
+<project>/.autopilot/STOP           not committed — kill switch
 ```
 
 Porting to a new project means writing that config file. Nothing in `lib/` knows what language
@@ -63,13 +68,19 @@ committed its own work. All seven are written up in
 [docs/reference/observed-behaviour.md](docs/reference/observed-behaviour.md), which is the first
 thing to read before changing anything here.
 
-**Still unverified:** a run driven by launchd rather than by hand, and whether `stop` really
-survives a reboot.
+On 2026-08-15 launchd drove a full task with no manual step: the interval fired on schedule, the
+agent ran, verification passed, the commit reached the remote, the issue closed. That also settled
+the risk worth worrying about — `gh` reaches its keychain token from inside a launchd job, which
+would otherwise have looked like a queue that is permanently empty.
+
+**Still unverified:** a reboot. That a stopped job stays stopped, and that a started one does not
+come back, rest on [ADR-0003](docs/decisions/0003-plist-lives-with-the-project.md) rather than on
+evidence.
 
 ```sh
 sh install-project.sh /path/to/project   # writes the job, starts nothing
 sh ctl.sh start /path/to/project          # begins a session
-sh ctl.sh stop  /path/to/project          # ends it, across reboots too
+sh ctl.sh stop  /path/to/project          # ends it, and it stays ended
 ```
 
 **The loop runs only in a session you started.** It does not resume by itself after a reboot; see

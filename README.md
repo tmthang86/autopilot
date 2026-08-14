@@ -52,7 +52,7 @@ a project is written in.
 
 ## Status
 
-Working, covered by 187 tests, and exercised end to end on 2026-08-14 against a real private
+Working, covered by 187 tests, and exercised end to end on 2026-08-14, then under launchd on 2026-08-15 against a real private
 repository with the real agent: issue claimed, work implemented, verification run, commit pushed,
 issue closed, `main` untouched. The rejection path was proven too — a red suite rewinds to the
 commit the run started from and leaves the issue open.

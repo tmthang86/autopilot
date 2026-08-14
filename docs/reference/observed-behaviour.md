@@ -130,12 +130,41 @@ project's contract — but it wasted a debugging cycle.
 not need to inject the project's rules into the prompt; the prompt only carries what is specific to
 unattended operation.
 
+---
+
+## 2026-08-15 — launchd verification
+
+A second throwaway repository, `StartInterval` 60, plist at `<project>/.autopilot/launchd.plist`.
+
+**The scheduler path works.** With no issues in the repository, a launchd-triggered run logged
+`queue bound to …` followed by `queue is empty`, and exited 0.
+
+That short log answers the question that mattered most. **`gh` reaches its keychain token from
+inside a launchd job.** launchd gives a child no login shell and its own session context, so the
+plausible failure was `gh` being unable to read the credential — which would have presented as a
+queue that is permanently empty, indistinguishable from having no work. It does not happen. The
+same line proves `git` and `jq` were found through the `PATH` written into the plist; the default
+launchd `PATH` is only `/usr/bin:/bin:/usr/sbin:/sbin`, which contains none of them.
+
+**A full task ran under launchd with no manual step.** One issue was added and left alone. The
+next interval fired exactly 60 seconds after the previous one, claimed the issue, ran the agent,
+passed verification, pushed a commit that matches the remote, and closed the issue. `main` was
+untouched. So `claude` is reachable from a launchd job as well — all four dependencies confirmed.
+
+**`stop` works.** After `ctl.sh stop`, `launchctl print` no longer knows the label,
+`print-disabled` lists it as `disabled`, and `ctl.sh status` reports `loaded: no`.
+
+**Diagnosing a job that appears not to fire.** `launchctl print gui/$UID/<label>` is the tool.
+`run interval = 60 seconds` confirms the plist was parsed; `runs` and `last exit code` say whether
+it has executed. A `runs = 0` reading shortly after `bootstrap` means the first interval has not
+elapsed yet, not that anything is wrong — `launchctl kickstart gui/$UID/<label>` forces a run
+without waiting. `plutil -lint` validates the file separately from whether launchd accepted it.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.
   The probe classifier exists precisely so that nothing depends on the throttled shape. When a real
   throttle is finally observed, record it here verbatim and the matcher can be tightened.
-- **A launchd-driven run.** Every run so far was invoked by hand. The scheduler path — including
-  whether the explicit `PATH` in the plist is sufficient — is unverified.
-- **A reboot.** The claim that `stop` survives a restart follows from `launchctl disable` writing to
-  a persistent database, and has not been tested on this machine.
+- **A reboot.** That `stop` survives a restart, and that a job left *started* does not come back,
+  both follow from the plist living outside `~/Library/LaunchAgents` ([ADR-0003](../decisions/0003-plist-lives-with-the-project.md)).
+  Neither has been tested on this machine. Until it is, that guarantee is an argument, not evidence.

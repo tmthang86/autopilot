@@ -4,3 +4,9 @@ tests/tmp/
 
 # macOS
 .DS_Store
+
+# Machine-specific: launchd job files carry absolute paths (ADR-0003)
+jobs/
+
+# Isolated workspaces for plan execution
+.worktrees/

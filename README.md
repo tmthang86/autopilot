@@ -74,16 +74,17 @@ disabled is your decision, not the installer's.
 [ADR-0002](docs/decisions/0002-off-until-explicitly-started.md) for why, and what that costs.
 
 This repository also carries Claude Code plugin manifests, so `/plugin marketplace add
-tmthang86/autopilot` works. It is not yet useful: the plugin ships no skills, and nothing copies
-`runner/` out to the stable path that installed launchd jobs point at. That deployment step is
-[designed](docs/design/2026-08-15-skill-layer-design.md) and not built. Clone until it lands.
+tmthang86/autopilot` works. The plugin ships `autopilot-deliver` and `autopilot-review`, and
+`runner/deploy.sh` copies `runner/` out to the stable path that installed launchd jobs point at.
+The deployment step refuses to overwrite a git checkout, and `ctl.sh status` names the deployed
+version.
 
 Full instructions, including how to find a job orphaned by an upgrade or a repository rename:
 [docs/guides/install.md](docs/guides/install.md).
 
 ## Status
 
-Working. 269 assertions across 13 test files, and exercised end to end under launchd on
+Working. 325 assertions across 15 test files, and exercised end to end under launchd on
 2026-08-15 against a real repository with the real agent: issue claimed, work implemented,
 verification run, commit pushed, issue closed, `main` untouched. The rejection path was proven
 too — a red suite rewinds to the commit the run started from and leaves the issue open. That run

@@ -14,18 +14,19 @@ runner queries; producing the issues themselves is the job of the
 
 ## Get the runner onto this machine
 
-There is no automatic deployment step yet — copying just `runner/` out to a stable path is
-designed (`docs/design/2026-08-15-skill-layer-design.md`) but not built on this branch. Today,
-getting the runner onto a machine means cloning this repository there:
+Getting the runner onto a machine means either deploying it from the plugin cache or cloning this
+repository. The deployment copy is the part a scheduled run needs; a clone also carries `docs/`,
+`tests/`, and `.git`, which are harmless but not pruned from a plain clone:
 
 ```sh
+# Deploy just the runner from the plugin (the skill does this for you), or:
+sh ~/.local/share/autopilot/runner/deploy.sh
+
+# Clone the whole repository instead:
 git clone https://github.com/tmthang86/autopilot ~/.local/share/autopilot
 ```
 
-That puts the **whole repository** at `~/.local/share/autopilot/` — `runner/`, `docs/`, `tests/`,
-and `.git` together, not only the part a scheduled run needs. `docs/` and `tests/` sitting there
-are harmless; they are simply not pruned yet. Every command in this guide runs a script from
-inside `runner/`:
+Every command in this guide runs a script from inside `runner/`:
 
     ~/.local/share/autopilot/runner/install-project.sh
     ~/.local/share/autopilot/runner/ctl.sh
@@ -34,13 +35,11 @@ The repository carries Claude Code plugin manifests (`.claude-plugin/`), so `/pl
 add tmthang86/autopilot` followed by `/plugin install autopilot@autopilot` succeeds — the
 repository has been public since 2026-08-15.
 
-**It does not yet give you a running runner, though.** Installing the plugin places the repository
-in Claude Code's plugin cache, at a path that carries its version. Two things are missing. The
-plugin ships no skills yet, so there is nothing to invoke. And nothing copies `runner/` out to the
-stable path that installed launchd jobs point at — that deployment step is designed and not built
-(see [the skill layer design](../design/2026-08-15-skill-layer-design.md)). Until it lands,
-cloning as above is what actually gets the runner working, and the plugin route is worth taking
-only if you want the repository to update itself with `/plugin update`.
+Installing the plugin places the repository in Claude Code's plugin cache, at a path that carries
+its version. The plugin ships `autopilot-deliver` and `autopilot-review`, and `runner/deploy.sh`
+copies `runner/` out to the stable path that installed launchd jobs point at. Deploying refuses to
+overwrite a git checkout, so converting this machine's still-git clone is a deliberate act: push it,
+remove the directory, and let the skill deploy a fresh copy.
 
 The deployed clone is never edited in place. Fix things in the repository, then `git pull` (or
 re-clone) `~/.local/share/autopilot` to pick up the fix. `ctl.sh status` names the version it is

@@ -185,6 +185,42 @@ away believing the loop is running overnight, and an unloaded job looks exactly 
 with an empty queue. `start` now confirms with `launchctl print` and exits non-zero with
 launchctl's own message if the job is not loaded.
 
+## 2026-08-15 — a job that loads, reports success, and never runs
+
+**What happened.** `com.autopilot.myproject` was started, and `ctl.sh start` reported success —
+correctly, since the job really was loaded. Hours later, `launchctl list` showed:
+
+```
+-	78	com.autopilot.myproject
+```
+
+`78` is `EX_CONFIG`. The `-` means no process was running at that moment.
+
+**The runner had never executed once.** No `state.json`, no `launchd.out`, no `launchd.err`, and
+`.autopilot/logs/` still empty carrying the mtime of the install. A run that starts and then fails
+leaves something behind. This left nothing at all, which places the failure *before* the program.
+
+**Cause — hypothesis, not yet confirmed.** The plist's `StandardOutPath` and `StandardErrorPath`
+point into the project's `.autopilot/logs/`, on the external `noowners` volume. launchd opens those
+files before executing the program, so a failure there would abort the job with `EX_CONFIG` and
+produce no output anywhere — including in the error file it could not open. This matches every
+symptom observed, but it has not been proven. Proving it means pointing the log paths at the
+internal disk and re-testing.
+
+**Why it slips past the existing defences.** [ADR-0004](../decisions/0004-job-files-live-on-the-internal-disk.md)
+moved the *plist* off the external volume, and `ctl.sh start` was hardened to verify the bootstrap
+rather than assume it. Both still hold and neither helps: the job genuinely loads, and the label
+genuinely exists. `loaded: yes` and `autopilot started` are both true and both useless.
+
+This is the third variant of one failure — *the loop is not doing anything and everything that
+reports on it says otherwise*. The first was `start` discarding launchctl's exit status; the second
+was a missing label reported as an empty queue; this is a job that loads but cannot run.
+
+**The check that would catch it.** `launchctl print gui/$UID/<label>` reports `runs` and
+`last exit code`. A loaded job showing `runs = 0` well after its interval has elapsed, or a
+non-zero last exit with no logs on disk, is the signature. `ctl.sh status` reports only whether the
+label is known, so it cannot currently distinguish any of this from a quiet night.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

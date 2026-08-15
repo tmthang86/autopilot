@@ -47,7 +47,7 @@ The file is gitignored: it contains absolute paths from one machine.
 - Uninstalling a project by deleting its directory leaves a bootstrapped job pointing at a path
   that no longer exists. `guard_project_present` makes each run a harmless no-op, but the job
   lingers until `bootout`.
-- One more path that must agree between `install-project.sh` and `ctl.sh`. They are both wrong
+- One more path that must agree between `runner/install-project.sh` and `runner/ctl.sh`. They are both wrong
   together or right together, and a test asserts the default location.
 
 ### Neutral

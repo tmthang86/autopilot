@@ -62,13 +62,28 @@ with launchctl's own message when it is not.
 - The label is derived from the project's basename, so two projects with the same directory name
   on one machine would collide. Not handled; it would need the path hashed into the label.
 
-  > **2026-08-15:** Addressed in `runner/lib/label.sh`. The label is now derived from the
-  > project's `origin` remote, with the absolute path hashed into the label as the fallback for a
-  > project with no remote. See the *plugin-foundations* plan, Tasks 3 and 4.
-
 ### Neutral
 
 - `AUTOPILOT_PLIST_DIR` still overrides the location, which is how the tests avoid touching
   anything real.
 - Nothing prevents a future move back to the project directory for projects on ownership-enabled
   volumes. It would add a conditional for no benefit the operator can see.
+
+---
+
+## Later note — not part of the decision above
+
+Kept outside Consequences deliberately. That section is frozen: it says what it said when this ADR
+was accepted, and a bullet that reads as resolved is not the same bullet. This note records what
+happened afterwards; the decision, its status, and its consequences are unchanged.
+
+**2026-08-15.** The last Negative consequence — two projects with the same directory name collide,
+"not handled; it would need the path hashed into the label" — has since been handled, by exactly
+that mechanism. `runner/lib/label.sh` derives the label from the project's `origin` remote
+(`com.autopilot.<owner>-<repo>`), falling back to the directory name plus a digest of the absolute
+path when there is no remote. See the *plugin-foundations* plan, Tasks 3 and 4.
+
+Changing the label changed which job `ctl.sh` manages, so a project installed and started before
+that change still has a job running under the old label that neither `stop` nor `status` can see.
+Finding and removing it is documented in
+[docs/guides/install.md](../guides/install.md), "Upgrading a project installed before 0.1.0".

@@ -356,5 +356,12 @@ same disease — something did not work and everything reporting on it said othe
   The probe classifier exists precisely so that nothing depends on the throttled shape. When a real
   throttle is finally observed, record it here verbatim and the matcher can be tightened.
 - **A reboot.** That `stop` survives a restart, and that a job left *started* does not come back,
-  both follow from the plist living outside `~/Library/LaunchAgents` ([ADR-0003](../decisions/0003-plist-lives-with-the-project.md)).
-  Neither has been tested on this machine. Until it is, that guarantee is an argument, not evidence.
+  follow from the job file living outside `~/Library/LaunchAgents` on the internal disk
+  ([ADR-0004](../decisions/0004-job-files-live-on-the-internal-disk.md), which superseded ADR-0003).
+  Neither has been tested on this machine — 2026-08-15, accepted by the operator as still unverified.
+  Until a reboot is run and observed, that guarantee is an argument, not evidence.
+- **Intent binding end-to-end.** `queue_intent` containment and the refusal path carry unit tests
+  (committed `e250a59`), and the full suite passes. What has not been run is one real issue with a
+  valid `Intent:` line taken through the throwaway end-to-end repository against the real agent,
+  confirming the agent's transcript shows it read the plan file before writing code — the intent-binding
+  plan's last verification step, still open on 2026-08-15.

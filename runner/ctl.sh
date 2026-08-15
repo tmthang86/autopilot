@@ -6,6 +6,8 @@
 # reboot — see docs/decisions/0002-off-until-explicitly-started.md.
 set -eu
 
+HERE=$(cd "$(dirname "$0")" && pwd)
+
 ACTION=${1:-}
 PROJECT=${2:-}
 
@@ -58,6 +60,11 @@ case "$ACTION" in
     status)
         printf 'project:  %s\n' "$PROJECT"
         printf 'job file: %s\n' "$([ -f "$PLIST" ] && printf '%s' "$PLIST" || printf 'not installed')"
+        if [ -f "$HERE/VERSION" ]; then
+            printf 'runner:   %s\n' "$(cat "$HERE/VERSION")"
+        else
+            printf 'runner:   unknown — no VERSION file beside ctl.sh\n'
+        fi
         if launchctl print "$TARGET/$LABEL" >/dev/null 2>&1; then
             printf 'loaded:   yes\n'
         else

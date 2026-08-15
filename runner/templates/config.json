@@ -7,7 +7,7 @@
   "queue": {
     "ready_label": "autopilot",
     "exclude_labels": ["blocked", "needs-human", "status:in-progress"],
-    "depends_pattern": "Depends on #([0-9]+)"
+    "intent_marker": "Intent:"
   },
   "agent": {
     "permission_mode": "bypassPermissions",

@@ -4,6 +4,11 @@
 . "$RUNNER_ROOT/lib/config.sh"
 . "$RUNNER_ROOT/lib/agent.sh"
 
+# tests/run.sh exports AUTOPILOT_HOME; a run of this file on its own must
+# still find the real template rather than failing on an unset variable.
+AUTOPILOT_HOME=${AUTOPILOT_HOME:-$RUNNER_ROOT}
+export AUTOPILOT_HOME
+
 repo=$(make_repo)
 mkdir -p "$repo/.autopilot"
 cp "$RUNNER_ROOT/templates/config.json" "$repo/.autopilot/config.json"
@@ -112,6 +117,22 @@ assert_contains "$p" "Add a thing"     "the title reaches the prompt"
 assert_contains "$p" "Body line one."  "the body reaches the prompt"
 assert_contains "$p" "autopilot/main"  "the work branch reaches the prompt"
 assert_contains "$p" "blocked"         "the blocked-rather-than-guess rule is present"
+
+# --- intent binding in the prompt ---
+# The controller resolved a valid pointer; the path must reach the agent, in the
+# task block below the --- TASK --- divider so the prefix stays cachable.
+pi=$(agent_prompt 42 "Add a thing" "Body." "autopilot/main" "Demo" "$repo/docs/plans/0001-init.md")
+assert_contains "$pi" "0001-init.md" "the intent path reaches the task block"
+intent_part=$(printf '%s' "$pi" | sed -n '/^--- TASK/,$p')
+assert_contains "$intent_part" "0001-init.md" "the intent path is in the varying task block, not the prefix"
+assert_contains "$pi" "read every intent file" "the agent is instructed to read the intent files"
+
+# No intent: no placeholder leaks into the rendered prompt.
+assert_eq "0" "$(printf '%s' "$p" | grep -c 'INTENT_FILES' || true)" "no bare placeholder leaks without intent"
+prefix_no=$(printf '%s' "$p" | sed -n '1,/^--- TASK/p' | sed '$d')
+prefix_yes=$(printf '%s' "$pi" | sed -n '1,/^--- TASK/p' | sed '$d')
+assert_eq "$prefix_no" "$prefix_yes" "adding intent paths keeps the prefix byte-identical"
+assert_contains "$prefix_yes" "read every intent file" "the read-intent instruction is part of the invariant prefix"
 
 # The invariant prefix must be byte-identical between runs so the provider's
 # prompt cache can absorb it; only the task block may differ.

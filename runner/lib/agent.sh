@@ -17,17 +17,28 @@ agent_args() {
 # The prefix above the TASK line is byte-identical on every run so the
 # provider's prompt cache absorbs it. Only the task block below varies.
 agent_prompt() {
-    _num=$1; _title=$2; _body=$3; _branch=$4; _project=$5
+    _num=$1; _title=$2; _body=$3; _branch=$4; _project=$5; _intent=${6:-}
     if [ ! -f "${AUTOPILOT_HOME:-}/templates/prompt.tmpl" ]; then
         # Silence here would hand the agent an empty task and let it improvise,
         # which is the one thing this whole design exists to prevent.
         log_error "prompt template not found; AUTOPILOT_HOME=[${AUTOPILOT_HOME:-unset}]"
         return 1
     fi
+    # The intent list lives below the --- TASK --- divider, in the varying task
+    # block. The prefix above it stays byte-identical so the provider's prompt
+    # cache absorbs it; dropping a path into the prefix would break every cache
+    # hit for every subsequent run. _intent is given one path per line (the
+    # output of queue_intent); indent each line under the header.
+    if [ -n "$_intent" ]; then
+        _intent_block=$(printf '%s\n' "$_intent" | sed 's/^/  /')
+    else
+        _intent_block=""
+    fi
     sed -e "s|{{WORK_BRANCH}}|$_branch|g" \
         -e "s|{{PROJECT_NAME}}|$_project|g" \
         -e "s|{{ISSUE_NUMBER}}|$_num|g" \
         -e "s|{{ISSUE_TITLE}}|$_title|g" \
+        -e "s|{{INTENT_FILES}}|$_intent_block|g" \
         "$AUTOPILOT_HOME/templates/prompt.tmpl"
     printf '\n%s\n' "$_body"
 }

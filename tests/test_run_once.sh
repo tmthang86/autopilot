@@ -11,6 +11,12 @@ git -C "$repo" remote add origin "$TEST_TMP/tester-proj.git"
 git -C "$repo" push -q origin main
 mkdir -p "$repo/.autopilot"
 jq '.verify = [{"name":"t","cmd":"true"}]' "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+# The task's intent pointer must resolve on the work branch too, so the
+# document it names is committed before the branch splits.
+mkdir -p "$repo/docs/plans"
+echo "the approved plan" > "$repo/docs/plans/0001.md"
+git -C "$repo" add docs/plans/0001.md
+git -C "$repo" commit -q -m "add the approved plan"
 git -C "$repo" checkout -q -b autopilot/main
 git -C "$repo" checkout -q main
 
@@ -58,7 +64,7 @@ assert_eq "1" "$rc" "missing config exits non-zero"
 # --- a full successful run ---
 stub_bin gh 'case "$*" in
   *"issue list"*) cat <<JSON
-[{"number":5,"title":"Do a thing","body":"Create marker.txt","labels":[{"name":"autopilot"},{"name":"model:opus"},{"name":"effort:high"}],"milestone":null}]
+[{"number":5,"title":"Do a thing","body":"Intent: docs/plans/0001.md\nCreate marker.txt","labels":[{"name":"autopilot"},{"name":"model:opus"},{"name":"effort:high"}],"milestone":null}]
 JSON
   ;;
   *) echo "$*" >> "$GH_CALLS"; echo "{}" ;;
@@ -119,7 +125,7 @@ stub_bin gh '_fail() { printf "HTTP 503: gh issue edit failed (api.github.com)\n
 printf "%s\n" "$*" >> "$GH_CALLS"
 case "$1 $2" in
   "issue list") cat <<JSON
-[{"number":5,"title":"Do a thing","body":"Create marker2.txt","labels":[{"name":"autopilot"}],"milestone":null}]
+[{"number":5,"title":"Do a thing","body":"Intent: docs/plans/0001.md\nCreate marker2.txt","labels":[{"name":"autopilot"}],"milestone":null}]
 JSON
     ;;
   "issue edit")
@@ -178,6 +184,59 @@ assert_contains "$log" "status:in-progress" "the log says which label was left b
 assert_contains "$log" "an excluded label" "settle.sh's own wrapper line explains why the leftover label matters"
 assert_contains "$(cat "$GH_CALLS")" "issue close 5" "the run settles the issue rather than dying at the failed release"
 GH_FAIL_EDIT=none
+
+# --- a task naming no intent is refused before anything is spent on it ---
+# Intent is resolved before queue_claim, so the refusal must cost no token, no
+# claim label, no daily-cap increment, and no circuit-breaker increment. The
+# issue is commented and labelled blocked so a person knows what to fix.
+reset_run_state
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"
+case "$1 $2" in
+  "issue list") cat <<JSON
+[{"number":6,"title":"No intent","body":"Just some work","labels":[{"name":"autopilot"}],"milestone":null}]
+JSON
+    ;;
+  *) printf "{}\n" ;;
+esac'
+stub_bin claude 'echo "{\"type\":\"result\",\"is_error\":false}"'
+: > "$GH_CALLS"
+tasks_before=$(jq -r .tasks_today "$repo/.autopilot/state.json")
+fails_before=$(jq -r .consecutive_failures "$repo/.autopilot/state.json")
+run; rc=$?
+log=$(cat "$LOG_DIR"/*.log 2>/dev/null)
+assert_eq "0" "$rc" "a run refusing a pointerless issue exits 0, not as a crash"
+assert_contains "$log" "names no intent" "the log names the missing intent"
+assert_contains "$(cat "$GH_CALLS")" "issue comment 6" "the refusal is commented on the issue"
+assert_contains "$(cat "$GH_CALLS")" "--add-label blocked" "the issue is labelled blocked"
+assert_eq "0" "$([ -f "$AGENT_RAN" ] && echo 1 || echo 0)" "no agent turn is spent on a refused issue"
+assert_eq "$tasks_before" "$(jq -r .tasks_today "$repo/.autopilot/state.json")" \
+    "a refused issue does not count against the daily cap"
+assert_eq "$fails_before" "$(jq -r .consecutive_failures "$repo/.autopilot/state.json")" \
+    "a refused issue does not touch the circuit breaker"
+assert_eq "0" "$(grep -c 'issue edit 6 --add-label status:in-progress' "$GH_CALLS" || true)" \
+    "a refused issue is never claimed"
+
+# --- a pointer escaping the project root is refused the same way ---
+reset_run_state
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"
+case "$1 $2" in
+  "issue list") cat <<JSON
+[{"number":7,"title":"Escaping","body":"Intent: ../outside.md\nWork","labels":[{"name":"autopilot"}],"milestone":null}]
+JSON
+    ;;
+  *) printf "{}\n" ;;
+esac'
+stub_bin claude 'echo "{\"type\":\"result\",\"is_error\":false}"'
+: > "$GH_CALLS"
+tasks_before=$(jq -r .tasks_today "$repo/.autopilot/state.json")
+run; rc=$?
+log=$(cat "$LOG_DIR"/*.log 2>/dev/null)
+assert_eq "0" "$rc" "a run refusing an escaping pointer exits 0"
+assert_contains "$log" "traverses upward" "the log names the containment failure specifically"
+assert_contains "$(cat "$GH_CALLS")" "issue comment 7" "the escaping pointer is also commented on"
+assert_eq "0" "$([ -f "$AGENT_RAN" ] && echo 1 || echo 0)" "no agent turn is spent on an escaping pointer"
+assert_eq "$tasks_before" "$(jq -r .tasks_today "$repo/.autopilot/state.json")" \
+    "an escaping pointer does not count against the daily cap"
 
 # Skills run when a person is present; the loop runs when nobody is. A loop
 # that could invoke a skill would reach the one capability reserved for

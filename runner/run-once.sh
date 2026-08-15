@@ -23,6 +23,7 @@ done
 . "$AUTOPILOT_HOME/lib/state.sh"
 . "$AUTOPILOT_HOME/lib/guards.sh"
 . "$AUTOPILOT_HOME/lib/queue.sh"
+. "$AUTOPILOT_HOME/lib/intent.sh"
 . "$AUTOPILOT_HOME/lib/agent.sh"
 . "$AUTOPILOT_HOME/lib/verify.sh"
 . "$AUTOPILOT_HOME/lib/settle.sh"
@@ -53,6 +54,26 @@ TITLE=$(queue_field "$ISSUE" title)
 BODY=$(queue_field "$ISSUE" body)
 log_info "starting #$ISSUE: $TITLE"
 
+# Resolve the task's intent before anything is spent on it. A task whose body
+# names no intent, or whose pointer escapes the project root, must not run — and
+# refusing before queue_claim means the refusal costs no tokens, no attempt, and
+# no consecutive-failure increment. The reset settle_blocked performs is a
+# no-op here: the work branch has not been checked out yet.
+if ! INTENT_FILES=$(queue_intent "$BODY" "$PROJECT" 2>/dev/null); then
+    # queue_intent has already logged the specific refusal. Do not consume an
+    # attempt and do not touch the circuit breaker: retrying will not fix a
+    # missing pointer, and three badly written issues must not trip a STOP file
+    # meant for systemic failure.
+    if settle_blocked "$PROJECT" "$ISSUE" \
+        "This task was refused before any work started: it does not name the documents that authorise it. Add an '$(cfg_get queue.intent_marker Intent:)' line listing at least one existing file, then remove the 'blocked' label."; then
+        log_warn "#$ISSUE refused for missing or invalid intent; blocked pending a corrected pointer"
+    else
+        log_error "could not settle the intent refusal for #$ISSUE — the issue may lack a blocked label"
+    fi
+    exit 0
+fi
+export INTENT_FILES
+
 AGENT_MODEL=$(cfg_get agent.default_model sonnet)
 AGENT_EFFORT=$(cfg_get agent.default_effort low)
 for L in $(printf '%s' "$QUEUE_CACHE" | jq -r ".[] | select(.number == $ISSUE) | .labels[]?.name"); do
@@ -68,7 +89,7 @@ WORK_BRANCH=$(cfg_get project.work_branch autopilot/main)
 git -C "$PROJECT" checkout -q "$WORK_BRANCH" 2>/dev/null ||
     git -C "$PROJECT" checkout -q -b "$WORK_BRANCH"
 
-PROMPT=$(agent_prompt "$ISSUE" "$TITLE" "$BODY" "$WORK_BRANCH" "$(cfg_get project.name project)") || exit 1
+PROMPT=$(agent_prompt "$ISSUE" "$TITLE" "$BODY" "$WORK_BRANCH" "$(cfg_get project.name project)" "$INTENT_FILES") || exit 1
 
 # Where the run began. Every rejection path rewinds to exactly this, because
 # the agent commits its own work and HEAD will have moved by then.

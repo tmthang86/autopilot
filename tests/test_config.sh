@@ -12,6 +12,7 @@ assert_eq "0" "$rc" "cfg_load accepts the template"
 assert_eq "sonnet" "$(cfg_get agent.default_model x)" "cfg_get reads a nested value"
 assert_eq "fallback" "$(cfg_get agent.nonexistent fallback)" "cfg_get returns the default when absent"
 assert_eq "main" "$(cfg_get project.main_branch x)" "cfg_get reads main_branch"
+assert_eq "Intent:" "$(cfg_get queue.intent_marker x)" "cfg_get reads the intent marker"
 
 count=$(cfg_list queue.exclude_labels | wc -l | tr -d ' ')
 assert_eq "3" "$count" "cfg_list emits one line per element"

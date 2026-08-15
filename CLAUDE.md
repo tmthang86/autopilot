@@ -43,12 +43,14 @@ regardless of what it enables.
 The runner is installed once and shared by every project on the machine. All project-specific
 knowledge lives in `<project>/.autopilot/config.json`, which the project commits.
 
-Four things, and only these four, are project-specific:
+Five things, and only these five, are project-specific:
 
 - **verify** — the commands that must pass before a commit
 - **autonomy** — which classes of task may be closed by the runner and which must stop for a human
 - **pacing** — interval, daily cap, quiet hours, spend ceiling
 - **queue** — which label means eligible, how dependencies are declared
+- **intent** — how a task names the documents that authorise it (`queue.intent_marker`,
+  default `Intent:`)
 
 Portability now includes queue preparation: `install-project.sh` creates the
 labels the runner queries, so a project is not required to have been prepared

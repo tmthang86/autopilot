@@ -61,7 +61,7 @@ job. **It does not start anything.**
 
 ## Configure
 
-Four things in `.autopilot/config.json` are project-specific. Everything else can stay as it is.
+Five things in `.autopilot/config.json` are project-specific. Everything else can stay as it is.
 
 **`verify`** — the commands that must all pass before anything is committed. This is where "what
 language is this project" lives, and it is the only thing standing between the agent and a bad
@@ -82,7 +82,23 @@ day), `circuit_breaker_failures`.
 **`autonomy.prepare_only_label`** — issues carrying this label are implemented and committed but
 never closed, because their correctness needs a person to look. Defaults to `needs-human`.
 
-**`queue`** — which label means eligible, and which labels exclude an issue.
+**`queue`** — which label means eligible, and which labels exclude an issue. `queue.intent_marker`
+defaults to `Intent:` and is the phrase the runner looks for when a task names the documents that
+authorise it.
+
+**`intent`** — since ADR-0005, every issue must carry an intent pointer. The marker line reads one
+or more repository-relative paths to existing files, space-separated:
+
+```
+Intent: docs/plans/2026-08-14-initial-design.md docs/reference/upstream-api.md
+```
+
+The runner resolves each pointer before spending a single token. A task without one, or whose
+pointer is absolute, escapes the project root, or names a missing file, is refused: the issue is
+commented, labelled `blocked`, and costs no attempt and no circuit-breaker increment. Paths are
+validated against the project root as untrusted input because the runner executes with permission
+checks disabled — a `../` escape or a symlink pointing outside the tree is as unacceptable as an
+absolute path.
 
 Commit `config.json`. It is the contract between the project and the runner.
 

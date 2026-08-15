@@ -22,7 +22,8 @@ fi
 PROJECT=$(cd "$PROJECT" && pwd)
 
 NAME=$(basename "$PROJECT")
-LABEL="com.autopilot.$NAME"
+. "$HERE/lib/label.sh"
+LABEL=$(label_for_project "$PROJECT")
 # Job files live on the internal disk, keyed by label. A project may sit on a
 # volume mounted `noowners` — external drives routinely are — and launchd
 # refuses to bootstrap a plist from one, with only "Input/output error" to say

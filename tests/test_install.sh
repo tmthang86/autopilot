@@ -1,5 +1,6 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
+. "$RUNNER_ROOT/lib/label.sh"
 
 # Never touch the operator's real launchd directories from a test.
 PLISTDIR="$TEST_TMP/plists"
@@ -11,13 +12,17 @@ stub_bin launchctl 'echo "$*" >> "$LCTL_CALLS"; exit 0'
 
 repo=$(make_repo)
 name=$(basename "$repo")
+# make_repo builds a bare repo with no origin remote, so its label falls back
+# to the directory name plus a digest of the absolute path (see lib/label.sh)
+# rather than the plain "com.autopilot.$name" an older, buggy install used.
+label=$(label_for_project "$repo")
 
 # --- install ---
 sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "1" "$([ -f "$repo/.autopilot/config.json" ] && echo 1 || echo 0)" "a config is created"
 assert_eq "$name" "$(jq -r .project.name "$repo/.autopilot/config.json")" "the project name is substituted"
 
-plist="$PLISTDIR/com.autopilot.$name.plist"
+plist="$PLISTDIR/$label.plist"
 assert_eq "1" "$([ -f "$plist" ] && echo 1 || echo 0)" "the launchd plist is written"
 assert_contains "$(cat "$plist")" "1800"        "the interval is substituted"
 assert_contains "$(cat "$plist")" "$repo"       "the project path is substituted"
@@ -40,7 +45,7 @@ assert_eq "" "$(cat "$LCTL_CALLS")" "the installer does not load or start the jo
 # back by itself — "off until you start it" would only hold if the operator
 # remembered to stop it first.
 sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
-assert_eq "0" "$([ -f "$HOME/Library/LaunchAgents/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
+assert_eq "0" "$([ -f "$HOME/Library/LaunchAgents/$label.plist" ] && echo 1 || echo 0)" \
     "nothing is written into the auto-loaded LaunchAgents directory"
 
 # Nor may it live inside the project. A project on a volume mounted `noowners`
@@ -52,9 +57,9 @@ assert_eq "0" "$([ -f "$repo/.autopilot/launchd.plist" ] && echo 1 || echo 0)" \
 # The default is the internal disk, in a directory launchd does not auto-scan.
 unset AUTOPILOT_PLIST_DIR
 sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
-assert_eq "1" "$([ -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
+assert_eq "1" "$([ -f "$HOME/.local/share/autopilot/jobs/$label.plist" ] && echo 1 || echo 0)" \
     "the plist defaults to the internal-disk jobs directory"
-rm -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist"
+rm -f "$HOME/.local/share/autopilot/jobs/$label.plist"
 AUTOPILOT_PLIST_DIR="$PLISTDIR"; export AUTOPILOT_PLIST_DIR
 
 # --- gitignore ---
@@ -89,5 +94,25 @@ calls=$(cat "$LCTL_CALLS")
 assert_contains "$calls" "bootout" "stop boots the job out"
 # bootout alone lasts only until the next login; disable is what persists.
 assert_contains "$calls" "disable" "stop disables the service so it stays off across reboots"
+
+# Same directory name, different repositories. Before label.sh, the second
+# install overwrote the first's plist and both projects shared one job.
+one="$TEST_TMP/alpha/svc"; two="$TEST_TMP/beta/svc"
+mkdir -p "$one" "$two"
+git -C "$one" init -q; git -C "$one" remote add origin https://github.com/alpha/svc.git
+git -C "$two" init -q; git -C "$two" remote add origin https://github.com/beta/svc.git
+
+sh "$RUNNER_ROOT/install-project.sh" "$one" 1800 >/dev/null 2>&1
+sh "$RUNNER_ROOT/install-project.sh" "$two" 1800 >/dev/null 2>&1
+
+# Filtered to the two "svc" projects specifically: $PLISTDIR already holds
+# $repo's own plist from earlier in this file, so an unfiltered count would
+# never equal 2 even once alpha and beta each get distinct labels.
+assert_eq "2" "$(find "$AUTOPILOT_PLIST_DIR" -name 'com.autopilot.*-svc.plist' | wc -l | tr -d ' ')" \
+    "two projects with one directory name get two plists"
+
+# ctl.sh must find the same job the installer wrote, or it manages nothing.
+assert_contains "$(sh "$RUNNER_ROOT/ctl.sh" status "$one" 2>&1)" "alpha-svc" \
+    "ctl.sh derives the same label the installer used"
 
 finish

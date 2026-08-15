@@ -5,6 +5,7 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+. "$HERE/lib/label.sh"
 PROJECT=${1:-}
 INTERVAL=${2:-2100}
 
@@ -23,7 +24,7 @@ if [ ! -d "$PROJECT/.git" ]; then
 fi
 
 NAME=$(basename "$PROJECT")
-LABEL="com.autopilot.$NAME"
+LABEL=$(label_for_project "$PROJECT")
 AP="$PROJECT/.autopilot"
 # Not ~/Library/LaunchAgents (launchd auto-loads everything there at login) and
 # not the project directory (a project on a `noowners` volume cannot host a

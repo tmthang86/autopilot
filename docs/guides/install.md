@@ -140,6 +140,45 @@ rm ~/.local/share/autopilot/jobs/com.autopilot.<old-label>.plist
 Then re-run `install-project.sh` and `ctl.sh start` for the project, and confirm with
 `ctl.sh status` that exactly one job is loaded.
 
+## After renaming or transferring the GitHub repository
+
+The pre-0.1.0 migration above is not the only way a job outlives its label. `com.autopilot.<owner>-<repo>`
+is derived from `origin` at install time, and nothing re-derives it afterwards. Renaming the repository,
+or transferring it to a different owner, changes what `origin` *should* resolve to — but the label
+already on disk, and the one the running job was bootstrapped under, does not change with it. This
+happens at a time nobody is thinking about autopilot: the rename is a GitHub action, not an autopilot
+command.
+
+The symptoms are the same as the pre-0.1.0 case, because the underlying problem is the same — the
+installed label no longer matches `label_for_project` for this project:
+
+- `ctl.sh stop` boots out the label the current `origin` derives, which the running job is not, and
+  reports a clean stop.
+- `ctl.sh status` looks up the current label and reports `loaded: no`.
+- The old job keeps firing every interval, unsupervised, against whatever repository slug it was
+  started with — which, after a rename, GitHub still resolves via redirect, so it may keep working
+  silently instead of failing loudly.
+
+Find and remove it the same way:
+
+```sh
+launchctl list | grep com.autopilot
+ls ~/.local/share/autopilot/jobs/
+```
+
+Anything that is not `com.autopilot.<current-owner>-<current-repo>` is a candidate. Confirm it is
+really the one still running, then remove it:
+
+```sh
+launchctl print gui/$(id -u)/com.autopilot.<old-label>      # runs, last exit code, the program path
+launchctl bootout  gui/$(id -u)/com.autopilot.<old-label>
+launchctl disable  gui/$(id -u)/com.autopilot.<old-label>
+rm ~/.local/share/autopilot/jobs/com.autopilot.<old-label>.plist
+```
+
+Then re-run `install-project.sh` and `ctl.sh start` for the project, and confirm with
+`ctl.sh status` that exactly one job is loaded.
+
 ## Pause without stopping
 
 ```sh

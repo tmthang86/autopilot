@@ -22,6 +22,19 @@ if [ ! -d "$PROJECT/.git" ]; then
     printf 'not a git repository: %s\n' "$PROJECT" >&2
     exit 1
 fi
+# Checked here, before anything is written. Every gh call the runner makes names
+# the repository explicitly, derived from origin, so lib/queue.sh's queue_init
+# exits 1 without one — on every tick, and before guard_all, so not even a STOP
+# file quiets it. Installing anyway produced a green install and a start banner
+# for a job that could never take a single task: the same disease as reporting
+# a start that did not happen.
+if ! SLUG=$(repo_slug_for_project "$PROJECT"); then
+    printf 'no origin remote (or none that parses into owner/repo): %s\n' "$PROJECT" >&2
+    printf 'The runner names the repository on every gh call and refuses to start without it,\n' >&2
+    printf 'so a job installed here would stand down at every wake, forever.\n' >&2
+    printf 'Add an origin remote and run this again. Nothing was written.\n' >&2
+    exit 1
+fi
 
 NAME=$(basename "$PROJECT")
 LABEL=$(label_for_project "$PROJECT")
@@ -57,25 +70,25 @@ done
 # has no labels at all, exactly the kind of quiet lie this repository has
 # already been bitten by three times (see docs/reference/observed-behaviour.md,
 # 2026-08-15). Only the message `gh` actually prints distinguishes them.
-# repo_slug_for_project (lib/label.sh) is the one parse of the origin remote;
-# lib/queue.sh:12-24 is the other, and a third copy does not belong here.
+# $SLUG came from repo_slug_for_project (lib/label.sh) above — the one parse of
+# the origin remote; lib/queue.sh:12-24 is the other, and a third does not
+# belong here.
 LABEL_FAILURES=0
-if SLUG=$(repo_slug_for_project "$PROJECT"); then
-    printf 'creating labels in %s\n' "$SLUG"
-    while IFS='|' read -r lname lcolour ldesc; do
-        [ -n "$lname" ] || continue
-        if _lerr=$(gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
-            --description "$ldesc" 2>&1 >/dev/null); then
-            continue
-        fi
-        case "$_lerr" in
-            *"already exists"*) printf '  %s already exists\n' "$lname" ;;
-            *)
-                LABEL_FAILURES=$((LABEL_FAILURES + 1))
-                printf '  %s: label creation failed: %s\n' "$lname" "$_lerr" >&2
-                ;;
-        esac
-    done <<'LABELS'
+printf 'creating labels in %s\n' "$SLUG"
+while IFS='|' read -r lname lcolour ldesc; do
+    [ -n "$lname" ] || continue
+    if _lerr=$(gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
+        --description "$ldesc" 2>&1 >/dev/null); then
+        continue
+    fi
+    case "$_lerr" in
+        *"already exists"*) printf '  %s already exists\n' "$lname" ;;
+        *)
+            LABEL_FAILURES=$((LABEL_FAILURES + 1))
+            printf '  %s: label creation failed: %s\n' "$lname" "$_lerr" >&2
+            ;;
+    esac
+done <<'LABELS'
 autopilot|0e8a16|Eligible for unattended execution
 needs-human|fbca04|Correctness needs a person to observe it; autopilot must not close
 blocked|d93f0b|Waiting on a human decision
@@ -86,9 +99,6 @@ effort:low|ededed|Mechanical work
 effort:medium|d9d9d9|Moderate reasoning
 effort:high|bfbfbf|Hard reasoning
 LABELS
-else
-    printf 'no origin remote — skipping label creation\n'
-fi
 
 mkdir -p "$PLIST_DIR"
 PLIST="$PLIST_DIR/$LABEL.plist"

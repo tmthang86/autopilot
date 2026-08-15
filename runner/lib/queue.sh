@@ -46,10 +46,7 @@ queue_candidates() {
 # issue list cannot tell "nothing ready" apart from "the ready label was
 # never created" -- both return [] (see docs/reference/observed-behaviour.md,
 # 2026-08-15). This asks the one question that can, at the cost of a single
-# extra call on the idle path. The `gh` call sits in the `if` condition, not
-# a bare assignment: under run-once.sh's `set -eu` a bare `x=$(gh ...)`
-# aborts the whole shell the moment `gh` fails, even inside an `if` body
-# (same doc, same date). Both branches return explicitly.
+# extra call on the idle path.
 _queue_check_ready_label() {
     _label=$(cfg_get queue.ready_label autopilot)
     if ! _names=$(gh label list --repo "$AUTOPILOT_REPO" --json name -q '.[].name' 2>&1); then
@@ -91,10 +88,9 @@ queue_is_closed() {
 # leaving the title and body empty and every label lookup false. An issue
 # labelled needs-human would then be closed automatically.
 queue_load() {
-    # `|| true` on both calls: their failures are already logged, but
-    # queue_load itself (called bare by run-once.sh under `set -eu`) must
-    # always succeed -- a stood down run exits 0, log saying why, never a
-    # crash.
+    # `|| true` on both calls: their failures are already logged, and
+    # queue_load itself is called bare under `set -eu`, where an unguarded
+    # non-zero return would end the run instead of standing it down.
     QUEUE_CACHE=$(queue_candidates) || true
     if ! printf '%s' "$QUEUE_CACHE" | jq -e 'type == "array"' >/dev/null 2>&1; then
         QUEUE_CACHE='[]'
@@ -147,5 +143,17 @@ queue_has_label() {
           >/dev/null 2>&1
 }
 
-queue_claim()   { gh issue edit "$1" --repo "$AUTOPILOT_REPO" --add-label "status:in-progress" >/dev/null 2>&1; }
-queue_release() { gh issue edit "$1" --repo "$AUTOPILOT_REPO" --remove-label "status:in-progress" >/dev/null 2>&1; }
+# Both name gh's own failure and return gh's status, which as bare
+# `gh ... >/dev/null 2>&1` they discarded (docs/reference/observed-behaviour.md,
+# 2026-08-15). Every caller must guard the call and decide: a failed claim means
+# the run does not hold the issue, a failed release happens after the work is
+# already pushed and must never discard that.
+_queue_edit_claim_label() {
+    if _out=$(gh issue edit "$1" --repo "$AUTOPILOT_REPO" "$2" "status:in-progress" 2>&1 >/dev/null); then
+        return 0
+    fi
+    log_error "could not $3 #$1 in $AUTOPILOT_REPO (status:in-progress unchanged): $_out"
+    return 1
+}
+queue_claim()   { _queue_edit_claim_label "$1" --add-label    claim; }
+queue_release() { _queue_edit_claim_label "$1" --remove-label release; }

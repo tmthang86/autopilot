@@ -8,7 +8,12 @@ AUTOPILOT_PLIST_DIR="$PLISTDIR"
 export AUTOPILOT_PLIST_DIR
 
 LCTL_CALLS="$TEST_TMP/launchctl.txt"; export LCTL_CALLS; : > "$LCTL_CALLS"
-stub_bin launchctl 'echo "$*" >> "$LCTL_CALLS"; exit 0'
+# `print` answers from LCTL_LOADED, because start and stop each verify their own
+# work with it: start must see the job loaded, stop must see it gone.
+stub_bin launchctl 'echo "$*" >> "$LCTL_CALLS"
+case "$1" in print) [ "${LCTL_LOADED:-1}" = "1" ] || exit 1 ;; esac
+exit 0'
+LCTL_LOADED=1; export LCTL_LOADED
 
 # Stubbed up front: several installs below (the alpha/beta pair) carry a real
 # origin remote, so the installer's label-creation step would otherwise reach
@@ -21,9 +26,10 @@ stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 0'
 
 repo=$(make_repo)
 name=$(basename "$repo")
-# make_repo builds a bare repo with no origin remote, so its label falls back
-# to the directory name plus a digest of the absolute path (see lib/label.sh)
-# rather than the plain "com.autopilot.$name" an older, buggy install used.
+# An installable project has an origin remote: every gh call the runner makes
+# names the repository explicitly, and queue_init refuses to run without one,
+# so the installer refuses too. The label is derived from that remote.
+git -C "$repo" remote add origin "https://github.com/acme/$name.git"
 label=$(label_for_project "$repo")
 
 # --- install ---
@@ -98,7 +104,11 @@ assert_contains "$calls" "bootstrap" "start bootstraps the job"
 assert_eq "0" "$(printf '%s' "$calls" | grep -n 'enable' | cut -d: -f1 | head -1 | awk '{print ($1<=1)?0:1}')" "enable precedes bootstrap"
 
 : > "$LCTL_CALLS"
-sh "$RUNNER_ROOT/ctl.sh" stop "$repo" >/dev/null 2>&1
+# The job goes away when it is booted out, which is what stop now verifies.
+LCTL_LOADED=0
+sh "$RUNNER_ROOT/ctl.sh" stop "$repo" >/dev/null 2>&1; rc=$?
+LCTL_LOADED=1
+assert_eq "0" "$rc" "a stop that removed the job exits 0"
 calls=$(cat "$LCTL_CALLS")
 assert_contains "$calls" "bootout" "stop boots the job out"
 # bootout alone lasts only until the next login; disable is what persists.
@@ -124,15 +134,24 @@ assert_eq "2" "$(find "$AUTOPILOT_PLIST_DIR" -name 'com.autopilot.*-svc.plist' |
 assert_contains "$(sh "$RUNNER_ROOT/ctl.sh" status "$one" 2>&1)" "alpha-svc" \
     "ctl.sh derives the same label the installer used"
 
-# --- labels ---
-# $repo (from make_repo) has no origin remote. queue.sh cannot tell a missing
-# label from an empty queue, so the installer must skip label creation rather
-# than fail — but it must say why, not go silent.
+# --- a project with no origin remote is refused, not half-installed ---
+# queue_init (lib/queue.sh) exits 1 on a project with no origin, on every tick,
+# before any guard runs — so not even a STOP file quiets it. The installer used
+# to print "no origin remote — skipping label creation", write the plist, and
+# exit 0 with the start banner: a green install that could never take a single
+# task, which is this codebase's signature failure. It refuses instead.
+noorigin=$(make_repo)
 : > "$GH_CALLS"
-out=$(sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 2>&1); rc=$?
-assert_eq "0" "$rc" "the no-origin skip path still exits successfully"
+out=$(sh "$RUNNER_ROOT/install-project.sh" "$noorigin" 1800 2>&1); rc=$?
+assert_eq "1" "$rc" "a project with no origin remote is refused"
+assert_contains "$out" "no origin remote" "the installer says why it refused"
 assert_eq "" "$(cat "$GH_CALLS")" "no origin remote — no label creation is attempted"
-assert_contains "$out" "no origin remote" "the installer says why it skipped label creation"
+assert_eq "0" "$([ -f "$PLISTDIR/$(label_for_project "$noorigin").plist" ] && echo 1 || echo 0)" \
+    "no launchd job is written for a project that could never run one"
+assert_eq "0" "$([ -f "$noorigin/.autopilot/config.json" ] && echo 1 || echo 0)" \
+    "nothing is written into a project the installer refused"
+case "$out" in *"ctl.sh start"*) banner=1 ;; *) banner=0 ;; esac
+assert_eq "0" "$banner" "a refused install does not print the start banner"
 
 fresh="$TEST_TMP/fresh/repo"
 mkdir -p "$fresh"

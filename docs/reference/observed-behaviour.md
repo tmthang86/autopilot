@@ -306,6 +306,50 @@ guarded helper and wants to keep running regardless of its result must itself gu
 against `lib/*.sh` sourced under `tests/harness.sh` cannot catch a `set -eu` regression; only a test
 that actually runs `run-once.sh` can.
 
+## 2026-08-15 — the seventh instance: a bare `queue_claim`/`queue_release` statement
+
+**What happened.** Found by the whole-branch review and reproduced against the real `run-once.sh`
+with `gh` stubbed to fail only on `issue edit`. `queue_claim` and `queue_release` were each a bare
+`gh issue edit … >/dev/null 2>&1`, so the function's exit status *was* `gh`'s and its stderr went to
+`/dev/null`; both were then invoked as bare statements under `set -eu`.
+
+| Failing at | exit | last log line | state left behind |
+|---|---|---|---|
+| claim | 1 | `#5 will run on sonnet at low effort` | agent never invoked, `tasks_today` still 0, nothing on stderr, `launchd.err` empty |
+| release, after a green verify | 1 | `verify: t` | **the commit was pushed to origin**, the issue never commented, never closed, still carrying `status:in-progress` |
+
+`status:in-progress` is in `queue.exclude_labels`, so the second row leaves merged work behind an
+issue that reads as unstarted and is permanently invisible to the queue. Neither row produced a
+single diagnostic line, because gh's stderr was discarded before the shell died.
+
+**Why no test caught it.** `tests/harness.sh` never sets `-e`, so a unit test that sources
+`lib/queue.sh` passes whether or not the guard exists. Only a test that executes `run-once.sh` can
+see this class — the same lesson as the entry above, one level up the call stack, which is why that
+entry's rule now has a regression test that runs the real script rather than the library.
+
+**Rule.** A `gh` call that a caller must be able to react to captures gh's stderr
+(`if _out=$(gh … 2>&1 >/dev/null)`), logs it, and returns gh's status. Every caller then guards the
+call and decides:
+
+- A **failed claim** stops the run before the agent is invoked, exit 1. The run does not hold the
+  issue, and spending an agent turn and a commit on work another wake may already be doing is worse
+  than standing down.
+- A **failed release, comment, label, or close** happens after the work is pushed and must never
+  discard that. It is logged with what was left behind and what it costs, and settlement continues.
+
+Two related contradictions were found at the same time and are recorded here because they are the
+same disease — something did not work and everything reporting on it said otherwise:
+
+- `ctl.sh stop` ran `bootout` and `disable` as `2>/dev/null || true` and then printed that autopilot
+  was stopped, always. `start` had been hardened for exactly this and `stop` had not. It now verifies
+  with `launchctl print` and exits non-zero while the job is still loaded. It cannot see a job left
+  under an *older* label — that one is addressed in the install guide's upgrade section, and `stop`
+  points at it whenever it finds nothing loaded under the current label.
+- `install-project.sh` treated a missing `origin` as benign (`skipping label creation`, plist
+  written, exit 0, start banner), while `queue_init` treats it as fatal on every tick, before
+  `guard_all`, so not even a STOP file quiets it. A green install that could never run one task. The
+  installer now refuses before writing anything.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

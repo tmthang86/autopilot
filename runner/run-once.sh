@@ -2,7 +2,8 @@
 # Autopilot: one task per invocation, then exit.
 #
 # Exit 0 means "ran, or correctly declined to run" — a scheduler must not see a
-# normal stand-down as a fault. Only a configuration error exits non-zero.
+# normal stand-down as a fault. A non-zero exit means this run could not start
+# at all: a broken configuration, or an issue it could not take hold of.
 set -eu
 
 AUTOPILOT_HOME=$(cd "$(dirname "$0")" && pwd)
@@ -74,8 +75,19 @@ PROMPT=$(agent_prompt "$ISSUE" "$TITLE" "$BODY" "$WORK_BRANCH" "$(cfg_get projec
 AUTOPILOT_START_SHA=$(git -C "$PROJECT" rev-parse HEAD)
 export AUTOPILOT_START_SHA
 
-queue_claim "$ISSUE"
-state_bump tasks_today >/dev/null
+# The claim is what keeps the next wake off this issue, so a claim that did not
+# take means this run does not hold it. Spending an agent turn — and a commit —
+# on work another run may already be doing is worse than standing down, and the
+# operator gets gh's own reason from the log line queue_claim just wrote.
+if ! queue_claim "$ISSUE"; then
+    log_error "not running the agent for #$ISSUE: the issue was never claimed, and nothing has been changed"
+    exit 1
+fi
+# Guarded, not bare: the counter is bookkeeping, and losing it must not abandon
+# an issue this run has already claimed. The write failure is logged by
+# state.sh; this says what it costs.
+state_bump tasks_today >/dev/null ||
+    log_warn "could not record #$ISSUE in tasks_today — the daily cap will not count this run"
 
 RUN_LOG="$AP/logs/run-$ISSUE-$(date -u +%H%M%S).jsonl"
 if agent_run "$PROMPT" "$PROJECT" "$RUN_LOG"; then RC=0; else RC=1; fi
@@ -104,7 +116,14 @@ case "$(agent_classify "$RUN_LOG" "$RC")" in
             else
                 PREPARE=0
             fi
-            settle_success "$PROJECT" "$ISSUE" "$TITLE" "$PREPARE"
+            # Guarded: settle_success returns non-zero when the push never
+            # reached the remote or the branch check refused. Left bare, that
+            # ended the run here — before the circuit breaker below could see
+            # it, so an unreachable remote could fail every night without ever
+            # tripping anything.
+            settle_success "$PROJECT" "$ISSUE" "$TITLE" "$PREPARE" ||
+                state_bump consecutive_failures >/dev/null ||
+                log_warn "could not record the settlement failure for #$ISSUE"
         else
             state_bump consecutive_failures >/dev/null
             settle_failure "$PROJECT" "$ISSUE" "$VERIFY_FAILED_NAME" "$VERIFY_OUTPUT"

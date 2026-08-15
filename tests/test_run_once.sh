@@ -102,6 +102,78 @@ assert_eq "$before" "$(git -C "$repo" rev-parse HEAD)" "a red verify suite creat
 assert_eq "0" "$([ -f "$repo/should-not-land.txt" ] && echo 1 || echo 0)" "the discarded work is gone from the tree"
 assert_contains "$(cat "$GH_CALLS")" "issue comment" "the failure is reported on the issue"
 
+# --- gh refusing `issue edit` is the claim/release failure, and only running
+# the real script can see it ---
+# queue_claim and queue_release were `gh issue edit ... >/dev/null 2>&1`
+# invoked as bare statements. Under run-once.sh's `set -eu` a failing gh then
+# killed the run where it stood, with its stderr already thrown away: no log
+# line, no exit path, nothing for the operator to read. tests/harness.sh never
+# sets -e, so a unit test sourcing queue.sh passes either way — these two
+# blocks run run-once.sh itself.
+#
+# One stub serves both: it answers `issue list` with a real issue and, through
+# GH_FAIL_EDIT, fails exactly one kind of `gh issue edit` — the claim
+# (`--add-label`) or the release (`--remove-label`) — the way a 5xx or an
+# expired token does.
+stub_bin gh '_fail() { printf "HTTP 503: gh issue edit failed (api.github.com)\n" >&2; exit 1; }
+printf "%s\n" "$*" >> "$GH_CALLS"
+case "$1 $2" in
+  "issue list") cat <<JSON
+[{"number":5,"title":"Do a thing","body":"Create marker2.txt","labels":[{"name":"autopilot"}],"milestone":null}]
+JSON
+    ;;
+  "issue edit")
+    case "${GH_FAIL_EDIT:-none} $*" in
+      "claim "*--add-label*)      _fail ;;
+      "release "*--remove-label*) _fail ;;
+    esac
+    printf "{}\n"
+    ;;
+  *) printf "{}\n" ;;
+esac'
+export GH_FAIL_EDIT
+AGENT_RAN="$TEST_TMP/agent-ran"; export AGENT_RAN
+stub_bin claude 'echo ran >> "$AGENT_RAN"; echo "{\"type\":\"result\",\"is_error\":false}"; echo done > marker2.txt; exit 0'
+
+reset_run_state() {
+    jq '.verify = [{"name":"t","cmd":"true"}]' "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+    jq '.resume_after = 0 | .consecutive_failures = 0' "$repo/.autopilot/state.json" > "$TEST_TMP/s" \
+        && mv "$TEST_TMP/s" "$repo/.autopilot/state.json"
+    LOG_DIR="$repo/.autopilot/logs"; rm -f "$LOG_DIR"/*.log
+    rm -f "$AGENT_RAN"
+    : > "$GH_CALLS"
+}
+
+# A claim that did not take must stop the run before an agent turn is spent on
+# an issue this run does not hold.
+reset_run_state
+GH_FAIL_EDIT=claim
+tasks_before=$(jq -r .tasks_today "$repo/.autopilot/state.json")
+run; rc=$?
+log=$(cat "$LOG_DIR"/*.log 2>/dev/null)
+assert_eq "1" "$rc" "a claim gh refuses exits non-zero instead of dying mid-script"
+assert_contains "$log" "could not claim #5" "the log names the issue that could not be claimed"
+assert_contains "$log" "HTTP 503" "gh's own stderr reaches the log rather than /dev/null"
+assert_eq "0" "$([ -f "$AGENT_RAN" ] && echo 1 || echo 0)" "no agent turn is spent on an issue that was not claimed"
+assert_eq "$tasks_before" "$(jq -r .tasks_today "$repo/.autopilot/state.json")" \
+    "a run that never started does not count against the daily cap"
+
+# A release that did not take happens after the work is already pushed. It must
+# never discard that: the commit is delivered, the issue is still settled, and
+# the leftover claim label is reported so a person can remove it.
+reset_run_state
+GH_FAIL_EDIT=release
+run; rc=$?
+log=$(cat "$LOG_DIR"/*.log 2>/dev/null)
+assert_eq "0" "$rc" "a release failure after a green verify is not reported as a crashed run"
+assert_eq "$(git -C "$repo" rev-parse HEAD)" "$(git -C "$TEST_TMP/tester-proj.git" rev-parse autopilot/main)" \
+    "the work still reached the remote"
+assert_contains "$log" "could not release #5" "the log names the release that failed"
+assert_contains "$log" "HTTP 503" "gh's own stderr reaches the log on the release path too"
+assert_contains "$log" "status:in-progress" "the log says which label was left behind"
+assert_contains "$(cat "$GH_CALLS")" "issue close 5" "the run settles the issue rather than dying at the failed release"
+GH_FAIL_EDIT=none
+
 # Skills run when a person is present; the loop runs when nobody is. A loop
 # that could invoke a skill would reach the one capability reserved for
 # supervised moments.

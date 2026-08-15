@@ -5,9 +5,12 @@
 You need `git`, `gh` (authenticated with `gh auth login`), `jq`, and the `claude` CLI. The runner
 uses nothing else.
 
-The project must be a git repository with an `origin` remote. The installer
-creates the labels the runner queries; producing the issues themselves is the
-job of the `autopilot-deliver` skill.
+The project must be a git repository with an `origin` remote, and the installer
+**refuses** a project without one: every `gh` call the runner makes names the
+repository explicitly, derived from that remote, so a job installed without it
+would stand down at every wake forever. The installer creates the labels the
+runner queries; producing the issues themselves is the job of the
+`autopilot-deliver` skill.
 
 ## Get the runner onto this machine
 
@@ -88,7 +91,9 @@ sh ~/.local/share/autopilot/runner/ctl.sh stop   /path/to/project
 sh ~/.local/share/autopilot/runner/ctl.sh status /path/to/project
 ```
 
-`start` exits non-zero if the job did not actually load. The job file lives on the internal disk at
+`start` exits non-zero if the job did not actually load, and `stop` exits non-zero if the job is
+still loaded afterwards. Neither reports something that did not happen. The job file lives on the
+internal disk at
 `~/.local/share/autopilot/jobs/`, never inside the project — launchd refuses a plist on a volume
 mounted `noowners`, which external drives routinely are.
 
@@ -98,6 +103,42 @@ The cost of that choice is real: if you restart the machine and forget to start 
 will be done and nothing will tell you.
 
 Sleeping and waking the machine inside a started session is fine; the next interval fires on wake.
+
+## Upgrading a project installed before 0.1.0
+
+**Read this if a project was installed *and started* with an earlier runner.** The launchd job label
+used to be `com.autopilot.<basename-of-directory>`. It is now `com.autopilot.<owner>-<repo>`, derived
+from the `origin` remote, because two projects with the same directory name produced one label and
+the second install silently overwrote the first's job file.
+
+A job that was already running keeps running under the **old** label. Nothing in the upgrade touches
+it, and every command you would use to check has moved on to the new label:
+
+- `ctl.sh stop` boots out the new label, which that job is not, and reports a clean stop.
+- `ctl.sh status` looks up the new label and reports `loaded: no`.
+- The old job keeps firing every interval, unsupervised, from whatever runner path it was installed
+  with.
+
+`stop` now prints a note when it finds nothing loaded under the current label, which is the signal to
+do this. Find the orphan:
+
+```sh
+launchctl list | grep com.autopilot
+ls ~/.local/share/autopilot/jobs/
+```
+
+Anything that is not `com.autopilot.<owner>-<repo>` is from the old scheme. Confirm it is really the
+one still running, then remove it:
+
+```sh
+launchctl print gui/$(id -u)/com.autopilot.<old-label>      # runs, last exit code, the program path
+launchctl bootout  gui/$(id -u)/com.autopilot.<old-label>
+launchctl disable  gui/$(id -u)/com.autopilot.<old-label>
+rm ~/.local/share/autopilot/jobs/com.autopilot.<old-label>.plist
+```
+
+Then re-run `install-project.sh` and `ctl.sh start` for the project, and confirm with
+`ctl.sh status` that exactly one job is loaded.
 
 ## Pause without stopping
 

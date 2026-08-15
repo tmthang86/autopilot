@@ -54,9 +54,29 @@ case "$ACTION" in
             "$(sed -n 's/.*<key>StartInterval<\/key><integer>\([0-9]*\)<\/integer>.*/\1/p' "$PLIST" | head -1)"
         ;;
     stop)
-        launchctl bootout "$TARGET/$LABEL" 2>/dev/null || true
+        if launchctl print "$TARGET/$LABEL" >/dev/null 2>&1; then _was_loaded=1; else _was_loaded=0; fi
+        _err=$(launchctl bootout "$TARGET/$LABEL" 2>&1) || true
         launchctl disable "$TARGET/$LABEL" 2>/dev/null || true
+        # Never report a stop that did not happen — the mirror of start above.
+        # This branch used to print the reassuring sentence unconditionally, so
+        # a job that survived bootout kept taking a task every interval while
+        # the operator believed it was off.
+        if launchctl print "$TARGET/$LABEL" >/dev/null 2>&1; then
+            printf 'FAILED to stop autopilot for %s — the job is still loaded\n' "$NAME" >&2
+            [ -n "$_err" ] && printf '  launchctl: %s\n' "$_err" >&2
+            printf '  label: %s\n' "$LABEL" >&2
+            exit 1
+        fi
         printf 'autopilot stopped for %s, and will stay stopped across reboots\n' "$NAME"
+        # A stop with nothing to stop is fine, and is also exactly what an
+        # upgraded project looks like when its running job was installed under
+        # the old com.autopilot.<basename> label: this stops the new label,
+        # which nothing is using, while the old job keeps firing.
+        if [ "$_was_loaded" -eq 0 ]; then
+            printf 'note: no job was loaded under %s. If this project was started before the\n' "$LABEL"
+            printf '      job label changed, an older job may still be running — see the\n'
+            printf '      upgrade section of docs/guides/install.md.\n'
+        fi
         ;;
     status)
         printf 'project:  %s\n' "$PROJECT"

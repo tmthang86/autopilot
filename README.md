@@ -45,8 +45,8 @@ that the project itself commits:
 
 ```
 ~/.local/share/autopilot/           this repository — installed once, shared
+~/.local/share/autopilot/jobs/      launchd job files, one per project
 <project>/.autopilot/config.json    committed by the project — the contract
-<project>/.autopilot/launchd.plist  not committed — machine-specific paths
 <project>/.autopilot/state.json     not committed
 <project>/.autopilot/logs/          not committed
 <project>/.autopilot/STOP           not committed — kill switch

@@ -160,6 +160,31 @@ it has executed. A `runs = 0` reading shortly after `bootstrap` means the first 
 elapsed yet, not that anything is wrong — `launchctl kickstart gui/$UID/<label>` forces a run
 without waiting. `plutil -lint` validates the file separately from whether launchd accepted it.
 
+---
+
+## 2026-08-15 — installing against a project on an external volume
+
+**launchd will not load a plist from a volume mounted `noowners`.** The target project lives on an
+external APFS drive, and `mount` reports `noowners` — ownership disabled, which is routine for
+external drives. `launchctl bootstrap` answers only:
+
+```
+Bootstrap failed: 5: Input/output error
+```
+
+Nothing in that message points at the volume. `ls -l` shows sane permissions; `plutil -lint` says
+the file is fine. The tell is in `mount`.
+
+Job files now live at `~/.local/share/autopilot/jobs/<label>.plist` on the internal disk
+([ADR-0004](../decisions/0004-job-files-live-on-the-internal-disk.md)). Only the runner's own
+installation has to satisfy launchd; the project can live anywhere.
+
+**`ctl.sh start` used to report success when the bootstrap had failed**, because it discarded
+launchctl's exit status. That is the worst possible presentation of this bug: the operator walks
+away believing the loop is running overnight, and an unloaded job looks exactly like a quiet night
+with an empty queue. `start` now confirms with `launchctl print` and exits non-zero with
+launchctl's own message if the job is not loaded.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

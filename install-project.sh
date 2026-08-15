@@ -25,10 +25,10 @@ fi
 NAME=$(basename "$PROJECT")
 LABEL="com.autopilot.$NAME"
 AP="$PROJECT/.autopilot"
-# Deliberately NOT ~/Library/LaunchAgents: launchd auto-loads everything there
-# at login, so a job left started before a reboot would come back by itself.
-# bootstrap accepts any path, so the job lives with the project it serves.
-PLIST_DIR=${AUTOPILOT_PLIST_DIR:-$AP}
+# Not ~/Library/LaunchAgents (launchd auto-loads everything there at login) and
+# not the project directory (a project on a `noowners` volume cannot host a
+# plist launchd will accept). Internal disk, not auto-scanned. See ADR-0004.
+PLIST_DIR=${AUTOPILOT_PLIST_DIR:-$HOME/.local/share/autopilot/jobs}
 
 mkdir -p "$AP/logs"
 
@@ -41,14 +41,14 @@ else
 fi
 
 # config.json is meant to be committed; everything else here is local.
-for entry in ".autopilot/launchd.plist" ".autopilot/state.json" ".autopilot/logs/" ".autopilot/STOP" ".autopilot/lock/"; do
+for entry in ".autopilot/state.json" ".autopilot/logs/" ".autopilot/STOP" ".autopilot/lock/"; do
     if ! grep -qxF "$entry" "$PROJECT/.gitignore" 2>/dev/null; then
         printf '%s\n' "$entry" >> "$PROJECT/.gitignore"
     fi
 done
 
 mkdir -p "$PLIST_DIR"
-PLIST="$PLIST_DIR/launchd.plist"
+PLIST="$PLIST_DIR/$LABEL.plist"
 sed -e "s|{{LABEL}}|$LABEL|g" \
     -e "s|{{RUNNER}}|$HERE/run-once.sh|g" \
     -e "s|{{PROJECT}}|$PROJECT|g" \

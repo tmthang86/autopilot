@@ -17,7 +17,7 @@ sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "1" "$([ -f "$repo/.autopilot/config.json" ] && echo 1 || echo 0)" "a config is created"
 assert_eq "$name" "$(jq -r .project.name "$repo/.autopilot/config.json")" "the project name is substituted"
 
-plist="$PLISTDIR/launchd.plist"
+plist="$PLISTDIR/com.autopilot.$name.plist"
 assert_eq "1" "$([ -f "$plist" ] && echo 1 || echo 0)" "the launchd plist is written"
 assert_contains "$(cat "$plist")" "1800"        "the interval is substituted"
 assert_contains "$(cat "$plist")" "$repo"       "the project path is substituted"
@@ -43,12 +43,18 @@ sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "0" "$([ -f "$HOME/Library/LaunchAgents/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
     "nothing is written into the auto-loaded LaunchAgents directory"
 
-# By default it lives beside the project it serves.
+# Nor may it live inside the project. A project on a volume mounted `noowners`
+# — which external drives routinely are — cannot host a plist launchd will
+# accept; bootstrap fails with nothing but "Input/output error".
+assert_eq "0" "$([ -f "$repo/.autopilot/launchd.plist" ] && echo 1 || echo 0)" \
+    "no plist is written inside the project"
+
+# The default is the internal disk, in a directory launchd does not auto-scan.
 unset AUTOPILOT_PLIST_DIR
 sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
-assert_eq "1" "$([ -f "$repo/.autopilot/launchd.plist" ] && echo 1 || echo 0)" \
-    "the plist defaults to the project's own .autopilot directory"
-assert_contains "$(cat "$repo/.gitignore")" ".autopilot/launchd.plist" "the plist is gitignored"
+assert_eq "1" "$([ -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
+    "the plist defaults to the internal-disk jobs directory"
+rm -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist"
 AUTOPILOT_PLIST_DIR="$PLISTDIR"; export AUTOPILOT_PLIST_DIR
 
 # --- gitignore ---

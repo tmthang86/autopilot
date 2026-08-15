@@ -59,6 +59,10 @@ sh ~/.local/share/autopilot/ctl.sh stop   /path/to/project
 sh ~/.local/share/autopilot/ctl.sh status /path/to/project
 ```
 
+`start` exits non-zero if the job did not actually load. The job file lives on the internal disk at
+`~/.local/share/autopilot/jobs/`, never inside the project — launchd refuses a plist on a volume
+mounted `noowners`, which external drives routinely are.
+
 **The loop runs only in a session you started.** It does not come back after a reboot, and `stop`
 keeps it stopped across reboots — see [ADR-0002](../decisions/0002-off-until-explicitly-started.md).
 The cost of that choice is real: if you restart the machine and forget to start it again, nothing

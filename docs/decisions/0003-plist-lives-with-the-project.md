@@ -1,6 +1,6 @@
 # 3. The launchd job file lives with the project, not in LaunchAgents
 
-> **Status:** Accepted · **Date:** 2026-08-15
+> **Status:** Superseded by [ADR-0004](0004-job-files-live-on-the-internal-disk.md) · **Date:** 2026-08-15
 
 ## Context
 

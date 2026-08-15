@@ -82,6 +82,14 @@ done
 # it) above — so the label the installer creates and the label the queue
 # queries can never drift apart. The other eight names stay fixed; only this
 # one is configurable.
+#
+# `//` only substitutes when the left side is `null` (or `false` — see
+# docs/reference/observed-behaviour.md, this repository has been bitten by
+# that twice already). An empty string passes straight through it unchanged,
+# so `.queue.ready_label // empty` does NOT catch `"ready_label": ""`. What
+# actually catches that case is the shell fallback below: `[ -n "$READY_LABEL" ]`
+# is false for both "the key is absent" and "the key is an empty string",
+# and only then does READY_LABEL default to "autopilot".
 READY_LABEL=$(jq -r '.queue.ready_label // empty' "$AP/config.json" 2>/dev/null)
 [ -n "$READY_LABEL" ] || READY_LABEL=autopilot
 
@@ -102,7 +110,23 @@ _create_label() {
     esac
 }
 
-_create_label "$READY_LABEL" 0e8a16 "Eligible for unattended execution"
+# If the configured ready label names one of the eight fixed labels below
+# (e.g. queue.ready_label set to "blocked"), creating it here first — with the
+# ready label's own colour and description — and then again in the loop below
+# would send two different meanings to the same label name. The second gh call
+# would answer "already exists" and be silently absorbed as the benign case,
+# leaving the fixed label with the wrong colour and description and nothing
+# saying so. The fixed entry's own colour and description are the ones that
+# matter for that name, so skip the separate ready-label creation and let the
+# loop create it once, under its fixed meaning.
+case "$READY_LABEL" in
+    needs-human|blocked|status:in-progress|model:sonnet|model:opus|effort:low|effort:medium|effort:high)
+        _READY_LABEL_IS_FIXED=1 ;;
+    *) _READY_LABEL_IS_FIXED=0 ;;
+esac
+if [ "$_READY_LABEL_IS_FIXED" -eq 0 ]; then
+    _create_label "$READY_LABEL" 0e8a16 "Eligible for unattended execution"
+fi
 while IFS='|' read -r lname lcolour ldesc; do
     [ -n "$lname" ] || continue
     _create_label "$lname" "$lcolour" "$ldesc"

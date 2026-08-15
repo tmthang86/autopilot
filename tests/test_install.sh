@@ -247,4 +247,33 @@ assert_contains "$calls" "label create ready-for-agent" \
 assert_eq "0" "$(printf '%s\n' "$calls" | grep -c 'label create autopilot ')" \
     "the installer does not also create the old hardcoded name"
 
+# --- a ready label that collides with a fixed name must be created once, with
+# the fixed entry's colour and description, not twice with two meanings ---
+# If queue.ready_label names one of the eight fixed labels (e.g. "blocked"),
+# creating it first with the ready-label colour/description and then again in
+# the fixed loop sends gh two different meanings for the same name; the
+# second call answers "already exists" and is silently absorbed as benign,
+# leaving the label with the wrong colour and description forever.
+collide="$TEST_TMP/collide/repo"
+mkdir -p "$collide"
+git -C "$collide" init -q
+git -C "$collide" remote add origin https://github.com/acme/collide.git
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 0'
+: > "$GH_CALLS"
+sh "$RUNNER_ROOT/install-project.sh" "$collide" 1800 >/dev/null 2>&1
+jq '.queue.ready_label = "blocked"' "$collide/.autopilot/config.json" > "$TEST_TMP/c" \
+    && mv "$TEST_TMP/c" "$collide/.autopilot/config.json"
+rm -f "$PLISTDIR/$(label_for_project "$collide").plist"
+: > "$GH_CALLS"
+sh "$RUNNER_ROOT/install-project.sh" "$collide" 1800 >/dev/null 2>&1
+calls=$(cat "$GH_CALLS")
+assert_eq "1" "$(printf '%s\n' "$calls" | grep -c 'label create blocked ')" \
+    "a ready label colliding with a fixed name is created exactly once"
+assert_contains "$calls" "label create blocked --repo acme/collide --color d93f0b --description Waiting on a human decision" \
+    "the collided label keeps the fixed entry's own colour and description"
+assert_eq "0" "$(printf '%s\n' "$calls" | grep -c 'color 0e8a16.*Eligible for unattended execution')" \
+    "the ready label's own colour/description never lands on the fixed label"
+assert_eq "8" "$(printf '%s\n' "$calls" | grep -c 'label create')" \
+    "still exactly the eight fixed labels are created, not nine"
+
 finish

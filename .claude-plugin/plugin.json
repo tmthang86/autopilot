@@ -1,0 +1,18 @@
+{
+  "name": "autopilot",
+  "description": "Unattended delivery loop: takes approved plans to reviewed GitHub issues, runs them one at a time, and gates every commit on the project's own verification commands",
+  "version": "0.1.0",
+  "author": {
+    "name": "thangtran"
+  },
+  "homepage": "https://github.com/tmthang86/autopilot",
+  "repository": "https://github.com/tmthang86/autopilot",
+  "license": "MIT",
+  "keywords": [
+    "autopilot",
+    "unattended",
+    "delivery",
+    "github-issues",
+    "launchd"
+  ]
+}

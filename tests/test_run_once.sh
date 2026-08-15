@@ -102,4 +102,10 @@ assert_eq "$before" "$(git -C "$repo" rev-parse HEAD)" "a red verify suite creat
 assert_eq "0" "$([ -f "$repo/should-not-land.txt" ] && echo 1 || echo 0)" "the discarded work is gone from the tree"
 assert_contains "$(cat "$GH_CALLS")" "issue comment" "the failure is reported on the issue"
 
+# Skills run when a person is present; the loop runs when nobody is. A loop
+# that could invoke a skill would reach the one capability reserved for
+# supervised moments.
+assert_eq "" "$(grep -rl 'skills/' "$RUNNER_ROOT/run-once.sh" "$RUNNER_ROOT/lib/" 2>/dev/null)" \
+    "the unattended loop never reaches into the skill layer"
+
 finish

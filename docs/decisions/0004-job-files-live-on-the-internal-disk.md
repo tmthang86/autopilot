@@ -62,6 +62,10 @@ with launchctl's own message when it is not.
 - The label is derived from the project's basename, so two projects with the same directory name
   on one machine would collide. Not handled; it would need the path hashed into the label.
 
+  > **2026-08-15:** Addressed in `runner/lib/label.sh`. The label is now derived from the
+  > project's `origin` remote, with the absolute path hashed into the label as the fallback for a
+  > project with no remote. See the *plugin-foundations* plan, Tasks 3 and 4.
+
 ### Neutral
 
 - `AUTOPILOT_PLIST_DIR` still overrides the location, which is how the tests avoid touching

@@ -5,8 +5,9 @@
 You need `git`, `gh` (authenticated with `gh auth login`), `jq`, and the `claude` CLI. The runner
 uses nothing else.
 
-The project must be a git repository with a remote, and its work must already exist as issues
-carrying the `autopilot` label.
+The project must be a git repository with an `origin` remote. The installer
+creates the labels the runner queries; producing the issues themselves is the
+job of the `autopilot-deliver` skill.
 
 ## Install
 
@@ -20,6 +21,21 @@ week.
 
 This creates `.autopilot/config.json`, appends the local files to `.gitignore`, and writes a launchd
 job. **It does not start anything.**
+
+## What is installed where
+
+The repository is the plugin and the source. `runner/` is what gets deployed to
+`~/.local/share/autopilot/`, and it is the only part a scheduled run needs:
+
+    run-once.sh · lib/ · ctl.sh · install-project.sh · templates/ · VERSION
+
+`docs/`, `tests/`, and git history stay in the plugin. The deployed copy is
+never edited in place — fix it in the repository and deliver the fix with
+`/plugin update`. `ctl.sh status` names the deployed version.
+
+The plugin is distributed from `tmthang86/autopilot` on GitHub, which is
+currently **private**. Until it is made public, `/plugin marketplace add` will
+not work for anyone without access to that repository.
 
 ## Configure
 

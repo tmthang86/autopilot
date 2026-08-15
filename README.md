@@ -44,7 +44,7 @@ The runner is installed once per machine. Everything project-specific lives in a
 that the project itself commits:
 
 ```
-~/.local/share/autopilot/           this repository — installed once, shared
+~/.local/share/autopilot/           the deployed runner — installed once, shared
 ~/.local/share/autopilot/jobs/      launchd job files, one per project
 <project>/.autopilot/config.json    committed by the project — the contract
 <project>/.autopilot/state.json     not committed
@@ -52,8 +52,14 @@ that the project itself commits:
 <project>/.autopilot/STOP           not committed — kill switch
 ```
 
-Porting to a new project means writing that config file. Nothing in `lib/` knows what language
-a project is written in.
+`~/.local/share/autopilot/` is a deployment, not this repository: it holds only `run-once.sh`,
+`lib/`, `ctl.sh`, `install-project.sh`, `templates/`, and `VERSION`, copied out of this
+repository's `runner/` directory. `docs/`, `tests/`, and git history stay here, where development
+happens; the deployed copy is never edited in place. See
+[docs/guides/install.md](docs/guides/install.md#what-is-installed-where).
+
+Porting to a new project means writing that config file. Nothing in `runner/lib/` knows what
+language a project is written in.
 
 ## Status
 
@@ -78,9 +84,9 @@ come back, rest on [ADR-0003](docs/decisions/0003-plist-lives-with-the-project.m
 evidence.
 
 ```sh
-sh install-project.sh /path/to/project   # writes the job, starts nothing
-sh ctl.sh start /path/to/project          # begins a session
-sh ctl.sh stop  /path/to/project          # ends it, and it stays ended
+sh ~/.local/share/autopilot/install-project.sh /path/to/project   # writes the job, starts nothing
+sh ~/.local/share/autopilot/ctl.sh start /path/to/project          # begins a session
+sh ~/.local/share/autopilot/ctl.sh stop  /path/to/project          # ends it, and it stays ended
 ```
 
 **The loop runs only in a session you started.** It does not resume by itself after a reboot; see

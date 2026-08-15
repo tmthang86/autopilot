@@ -50,6 +50,10 @@ Four things, and only these four, are project-specific:
 - **pacing** — interval, daily cap, quiet hours, spend ceiling
 - **queue** — which label means eligible, how dependencies are declared
 
+Portability now includes queue preparation: `install-project.sh` creates the
+labels the runner queries, so a project is not required to have been prepared
+by hand before the runner is pointed at it.
+
 **If you find yourself writing a project's name, language, or build tool into `lib/`, stop.**
 It belongs in the config schema instead.
 
@@ -66,6 +70,7 @@ It belongs in the config schema instead.
 ## 5. Documentation
 
 - `docs/plans/` — written before code, following `_template.md`
+- `docs/design/` — validated designs, written before the plans that implement them
 - `docs/decisions/` — ADRs for expensive or contested choices; never edit an accepted one,
   supersede it instead
 - `docs/guides/` — install, configure, tune, troubleshoot

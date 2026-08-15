@@ -162,4 +162,71 @@ queue_load; assert_eq "" "$(queue_pick)" "empty queue yields empty, not an error
 stub_bin gh 'exit 1'
 queue_load; assert_eq "" "$(queue_pick 2>/dev/null)" "a gh failure degrades to empty rather than crashing"
 
+# --- a genuine gh failure must be reported, not swallowed as an empty queue ---
+# Measured directly against a real repository on 2026-08-15 (see
+# docs/reference/observed-behaviour.md): a nonexistent repository makes
+# `gh issue list` exit 1 with this GraphQL message on stderr. A missing
+# label is a different condition entirely -- `gh issue list --label <name>`
+# exits 0 with `[]` when the label was never created, so it can never reach
+# this path; that case is queue_load's job, tested separately below.
+stub_bin gh "echo \"GraphQL: Could not resolve to a Repository with the name 'owner/name'. (repository)\" >&2
+exit 1"
+
+AUTOPILOT_LOG_FILE="$TEST_TMP/queue-fail.log"
+export AUTOPILOT_LOG_FILE
+: > "$AUTOPILOT_LOG_FILE"
+
+out=$(queue_candidates); rc=$?
+
+assert_eq "[]" "$out" "a failed lookup still yields a parseable empty array"
+assert_eq "1" "$rc"   "a failed lookup reports failure to its caller"
+assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "Could not resolve to a Repository" \
+    "the log names the reason rather than reporting an empty queue"
+
+# --- a missing ready label must be named, but only once the list is empty ---
+# gh issue list cannot tell "nothing ready" apart from "the ready label does
+# not exist" -- both come back as []. queue_load asks the one call that can,
+# and only when the candidate list is empty: a non-empty result already
+# proves the label exists.
+AUTOPILOT_LOG_FILE="$TEST_TMP/missing-label.log"
+export AUTOPILOT_LOG_FILE
+: > "$AUTOPILOT_LOG_FILE"
+stub_bin gh 'case "$1 $2" in
+  "issue list") echo "[]" ;;
+  "label list") printf "bug\nenhancement\n" ;;
+  *) echo "{}" ;;
+esac'
+queue_load
+assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "autopilot" \
+    "the log names the missing ready label"
+assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "someone/thing" \
+    "the log names the repository the label is missing from"
+
+# A label list that does contain the ready label must not be reported missing.
+AUTOPILOT_LOG_FILE="$TEST_TMP/label-present.log"
+export AUTOPILOT_LOG_FILE
+: > "$AUTOPILOT_LOG_FILE"
+stub_bin gh 'case "$1 $2" in
+  "issue list") echo "[]" ;;
+  "label list") printf "autopilot\nbug\n" ;;
+  *) echo "{}" ;;
+esac'
+queue_load
+assert_eq "" "$(cat "$AUTOPILOT_LOG_FILE")" "no error is logged when the ready label exists"
+
+# A non-empty candidate list already proves the label exists, so the label
+# check must not run at all -- this is the extra gh call the idle path pays,
+# and it must stay off the busy path.
+GH_LABEL_CALLS="$TEST_TMP/gh-label-calls.txt"
+export GH_LABEL_CALLS
+: > "$GH_LABEL_CALLS"
+stub_bin gh 'case "$1 $2" in
+  "issue list") echo "[{\"number\":1,\"title\":\"t\",\"body\":\"b\",\"labels\":[{\"name\":\"autopilot\"}],\"milestone\":null}]" ;;
+  "label list") echo called >> "$GH_LABEL_CALLS" ;;
+  *) echo "{}" ;;
+esac'
+queue_load
+assert_eq "0" "$(wc -l < "$GH_LABEL_CALLS" | tr -d ' ')" \
+    "the label check does not run when the candidate list is non-empty"
+
 finish

@@ -248,6 +248,33 @@ the two 2026-08-15 entries above).
 installer's own error output, and fails the install with a non-zero exit — the config, gitignore,
 and plist still get written, but the operator is told plainly that labels are missing and why.
 
+## 2026-08-15 — `gh issue list` against a label that does not exist
+
+**What happened.** Measured directly against a real repository, three related calls, clean
+readings with no pipeline interference:
+
+| Scenario | exit | stdout | stderr |
+|---|---|---|---|
+| `gh issue list --label <nonexistent-label>` | 0 | `[]` | empty |
+| `gh issue list --repo <nonexistent-repo>` | 1 | empty | `GraphQL: Could not resolve to a Repository with the name 'owner/name'. (repository)` |
+| `gh label list --repo <valid-repo> --json name` | 0 | the labels as JSON | — |
+
+A label that was never created is invisible to `gh issue list`: it exits 0 and prints `[]`, exactly
+what a queue with nothing ready also prints. `gh issue list` only fails (non-zero exit, a message on
+stderr) for a condition it can't paper over, such as a repository it cannot resolve at all.
+
+**Why it matters.** The two conditions this repository actually needs to tell apart — "nothing is
+ready" and "the ready label doesn't exist" — produce byte-identical output from `gh issue list`.
+Nothing that call returns can distinguish them. Telling them apart requires a second, different
+question: `gh label list` names what labels actually exist in the repository.
+
+**Rule.** `queue_candidates` (`lib/queue.sh`) treats a non-zero exit from `gh issue list` as a real
+failure and logs its stderr rather than reporting an empty queue. Separately, `queue_load` treats an
+empty result — genuinely no work, or a swallowed failure, either way the list is `[]` — as the
+trigger to ask `gh label list` whether the configured ready label exists at all, and logs by name if
+it does not. A non-empty result is never checked; getting issues back already proves the label
+exists.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

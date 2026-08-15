@@ -25,9 +25,35 @@ queue_init() {
 
 queue_candidates() {
     _label=$(cfg_get queue.ready_label autopilot)
-    gh issue list --repo "$AUTOPILOT_REPO" --state open --limit 50 \
-        --json number,title,body,labels,milestone \
-        --label "$_label" 2>/dev/null || printf '[]'
+    if _out=$(gh issue list --repo "$AUTOPILOT_REPO" --state open --limit 50 \
+            --json number,title,body,labels,milestone \
+            --label "$_label" 2>&1); then
+        printf '%s' "$_out"
+        return 0
+    fi
+    # Reporting this as an empty queue is how a freshly installed project
+    # stands down every tick for a week without anyone learning why. A missing
+    # label does not land here: gh issue list exits 0 with [] for that (see
+    # docs/reference/observed-behaviour.md, 2026-08-15). This path is for a
+    # repository gh cannot reach at all — a bad slug, an expired token, a
+    # network error.
+    log_error "cannot read the queue for $AUTOPILOT_REPO: $_out"
+    printf '[]'
+    return 1
+}
+
+# Only called from queue_load when the candidate list came back empty. gh
+# issue list cannot tell "nothing ready" apart from "the ready label was
+# never created" -- both return [] (see docs/reference/observed-behaviour.md,
+# 2026-08-15). This asks the one question that can, at the cost of a single
+# extra call on the idle path.
+_queue_check_ready_label() {
+    _label=$(cfg_get queue.ready_label autopilot)
+    _names=$(gh label list --repo "$AUTOPILOT_REPO" --json name -q '.[].name' 2>/dev/null)
+    if printf '%s\n' "$_names" | grep -qxF "$_label"; then
+        return 0
+    fi
+    log_error "ready label \"$_label\" does not exist in $AUTOPILOT_REPO — issues will never be picked up until it is created"
 }
 
 # Only the configured phrase counts. A bare "#7" is a cross-reference, not a
@@ -61,6 +87,9 @@ queue_load() {
     QUEUE_CACHE=$(queue_candidates)
     if ! printf '%s' "$QUEUE_CACHE" | jq -e 'type == "array"' >/dev/null 2>&1; then
         QUEUE_CACHE='[]'
+    fi
+    if [ "$(printf '%s' "$QUEUE_CACHE" | jq 'length')" -eq 0 ]; then
+        _queue_check_ready_label
     fi
 }
 

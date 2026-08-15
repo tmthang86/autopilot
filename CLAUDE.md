@@ -17,7 +17,7 @@ that harder, the change is wrong even if it works.
 | Constraint | Why |
 |---|---|
 | POSIX shell only, no runtime dependencies beyond `git`, `gh`, `jq`, and the agent CLI | Anything the operator has to trust but cannot read is a liability |
-| No file in `lib/` exceeds ~150 lines | A file you can hold in your head is a file you can audit |
+| No file in `runner/lib/` exceeds ~150 lines | A file you can hold in your head is a file you can audit |
 | No network calls except through `gh` and the agent CLI | The set of things that can reach out stays enumerable |
 | Never write outside the project root or `.autopilot/` | Enforced by an explicit path check, not by convention |
 | Never operate on the project's main branch | Checked before every run, not assumed |
@@ -41,7 +41,7 @@ regardless of what it enables.
 ## 3. Portability is the product
 
 The runner is installed once and shared by every project on the machine. All project-specific
-knowledge lives in `<project>/.autopilot/config.yml`, which the project commits.
+knowledge lives in `<project>/.autopilot/config.json`, which the project commits.
 
 Four things, and only these four, are project-specific:
 
@@ -54,12 +54,13 @@ Portability now includes queue preparation: `install-project.sh` creates the
 labels the runner queries, so a project is not required to have been prepared
 by hand before the runner is pointed at it.
 
-**If you find yourself writing a project's name, language, or build tool into `lib/`, stop.**
-It belongs in the config schema instead.
+**If you find yourself writing a project's name, language, or build tool into `runner/lib/`,
+stop.** It belongs in the config schema instead.
 
 ## 4. Testing
 
-- Every function in `lib/` that makes a decision has a test. Functions that only print do not.
+- Every function in `runner/lib/` that makes a decision has a test. Functions that only print do
+  not.
 - Tests run against a **real throwaway git repository** created in a temp directory, never
   against mocks of git. Git's behaviour is the thing being relied on.
 - `gh` and the agent CLI are stubbed with fixture scripts on `PATH`. Record real output shapes

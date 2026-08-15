@@ -9,10 +9,38 @@ The project must be a git repository with an `origin` remote. The installer
 creates the labels the runner queries; producing the issues themselves is the
 job of the `autopilot-deliver` skill.
 
+## Get the runner onto this machine
+
+There is no automatic deployment step yet — copying just `runner/` out to a stable path is
+designed (`docs/design/2026-08-15-skill-layer-design.md`) but not built on this branch. Today,
+getting the runner onto a machine means cloning this repository there:
+
+```sh
+git clone https://github.com/tmthang86/autopilot ~/.local/share/autopilot
+```
+
+That puts the **whole repository** at `~/.local/share/autopilot/` — `runner/`, `docs/`, `tests/`,
+and `.git` together, not only the part a scheduled run needs. `docs/` and `tests/` sitting there
+are harmless; they are simply not pruned yet. Every command in this guide runs a script from
+inside `runner/`:
+
+    ~/.local/share/autopilot/runner/install-project.sh
+    ~/.local/share/autopilot/runner/ctl.sh
+
+The repository carries Claude Code plugin manifests (`.claude-plugin/`), so `/plugin marketplace
+add tmthang86/autopilot` followed by `/plugin install autopilot@autopilot` is the intended route.
+It does not work today: `tmthang86/autopilot` is currently **private**, and that command fails for
+anyone without access to it. Until the repository is made public — or the skill layer's automatic
+deployment lands — cloning it yourself is the only way to get the runner running.
+
+The deployed clone is never edited in place. Fix things in the repository, then `git pull` (or
+re-clone) `~/.local/share/autopilot` to pick up the fix. `ctl.sh status` names the version it is
+currently running, read from `runner/VERSION`.
+
 ## Install
 
 ```sh
-sh ~/.local/share/autopilot/install-project.sh /path/to/project [interval-seconds]
+sh ~/.local/share/autopilot/runner/install-project.sh /path/to/project [interval-seconds]
 ```
 
 The interval defaults to 2100 seconds (35 minutes). Start conservative: the right number depends on
@@ -21,21 +49,6 @@ week.
 
 This creates `.autopilot/config.json`, appends the local files to `.gitignore`, and writes a launchd
 job. **It does not start anything.**
-
-## What is installed where
-
-The repository is the plugin and the source. `runner/` is what gets deployed to
-`~/.local/share/autopilot/`, and it is the only part a scheduled run needs:
-
-    run-once.sh · lib/ · ctl.sh · install-project.sh · templates/ · VERSION
-
-`docs/`, `tests/`, and git history stay in the plugin. The deployed copy is
-never edited in place — fix it in the repository and deliver the fix with
-`/plugin update`. `ctl.sh status` names the deployed version.
-
-The plugin is distributed from `tmthang86/autopilot` on GitHub, which is
-currently **private**. Until it is made public, `/plugin marketplace add` will
-not work for anyone without access to that repository.
 
 ## Configure
 
@@ -70,9 +83,9 @@ Because it is tracked, **an uncommitted edit to it is reverted** the moment any 
 ## Start and stop
 
 ```sh
-sh ~/.local/share/autopilot/ctl.sh start  /path/to/project
-sh ~/.local/share/autopilot/ctl.sh stop   /path/to/project
-sh ~/.local/share/autopilot/ctl.sh status /path/to/project
+sh ~/.local/share/autopilot/runner/ctl.sh start  /path/to/project
+sh ~/.local/share/autopilot/runner/ctl.sh stop   /path/to/project
+sh ~/.local/share/autopilot/runner/ctl.sh status /path/to/project
 ```
 
 `start` exits non-zero if the job did not actually load. The job file lives on the internal disk at

@@ -52,11 +52,14 @@ that the project itself commits:
 <project>/.autopilot/STOP           not committed — kill switch
 ```
 
-`~/.local/share/autopilot/` is a deployment, not this repository: it holds only `run-once.sh`,
-`lib/`, `ctl.sh`, `install-project.sh`, `templates/`, and `VERSION`, copied out of this
-repository's `runner/` directory. `docs/`, `tests/`, and git history stay here, where development
-happens; the deployed copy is never edited in place. See
-[docs/guides/install.md](docs/guides/install.md#what-is-installed-where).
+`~/.local/share/autopilot/` is not this repository, even though today it holds a full clone of it
+— there is no automatic deployment step yet that copies out only the `runner/` directory the
+scheduled loop needs; that piece is designed but not built (see
+[docs/design/2026-08-15-skill-layer-design.md](docs/design/2026-08-15-skill-layer-design.md)). The
+scripts in question live at `runner/run-once.sh`, `runner/lib/`, `runner/ctl.sh`, and
+`runner/install-project.sh` in whatever copy of the repository you point at; the deployed clone is
+never edited in place. See
+[docs/guides/install.md](docs/guides/install.md#get-the-runner-onto-this-machine).
 
 Porting to a new project means writing that config file. Nothing in `runner/lib/` knows what
 language a project is written in.
@@ -84,9 +87,9 @@ come back, rest on [ADR-0003](docs/decisions/0003-plist-lives-with-the-project.m
 evidence.
 
 ```sh
-sh ~/.local/share/autopilot/install-project.sh /path/to/project   # writes the job, starts nothing
-sh ~/.local/share/autopilot/ctl.sh start /path/to/project          # begins a session
-sh ~/.local/share/autopilot/ctl.sh stop  /path/to/project          # ends it, and it stays ended
+sh ~/.local/share/autopilot/runner/install-project.sh /path/to/project   # writes the job, starts nothing
+sh ~/.local/share/autopilot/runner/ctl.sh start /path/to/project          # begins a session
+sh ~/.local/share/autopilot/runner/ctl.sh stop  /path/to/project          # ends it, and it stays ended
 ```
 
 **The loop runs only in a session you started.** It does not resume by itself after a reboot; see

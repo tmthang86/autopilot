@@ -10,3 +10,4 @@ jobs/
 
 # Isolated workspaces for plan execution
 .worktrees/
+.gitnexus

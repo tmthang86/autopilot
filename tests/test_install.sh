@@ -10,6 +10,15 @@ export AUTOPILOT_PLIST_DIR
 LCTL_CALLS="$TEST_TMP/launchctl.txt"; export LCTL_CALLS; : > "$LCTL_CALLS"
 stub_bin launchctl 'echo "$*" >> "$LCTL_CALLS"; exit 0'
 
+# Stubbed up front: several installs below (the alpha/beta pair) carry a real
+# origin remote, so the installer's label-creation step would otherwise reach
+# a real `gh` before the label-specific assertions near the end of this file
+# ever run. GH_CALLS is cleared right before each block that inspects it, so
+# calls made by earlier installs never leak into a later assertion.
+GH_CALLS="$TEST_TMP/gh-calls"; export GH_CALLS
+: > "$GH_CALLS"
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 0'
+
 repo=$(make_repo)
 name=$(basename "$repo")
 # make_repo builds a bare repo with no origin remote, so its label falls back
@@ -114,5 +123,44 @@ assert_eq "2" "$(find "$AUTOPILOT_PLIST_DIR" -name 'com.autopilot.*-svc.plist' |
 # ctl.sh must find the same job the installer wrote, or it manages nothing.
 assert_contains "$(sh "$RUNNER_ROOT/ctl.sh" status "$one" 2>&1)" "alpha-svc" \
     "ctl.sh derives the same label the installer used"
+
+# --- labels ---
+# $repo (from make_repo) has no origin remote. queue.sh cannot tell a missing
+# label from an empty queue, so the installer must skip label creation rather
+# than fail — but it must say why, not go silent.
+: > "$GH_CALLS"
+out=$(sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 2>&1)
+assert_eq "" "$(cat "$GH_CALLS")" "no origin remote — no label creation is attempted"
+assert_contains "$out" "no origin remote" "the installer says why it skipped label creation"
+
+fresh="$TEST_TMP/fresh/repo"
+mkdir -p "$fresh"
+git -C "$fresh" init -q
+git -C "$fresh" remote add origin https://github.com/acme/fresh.git
+
+: > "$GH_CALLS"
+sh "$RUNNER_ROOT/install-project.sh" "$fresh" 1800 >/dev/null 2>&1
+
+calls=$(cat "$GH_CALLS")
+assert_contains "$calls" "label create autopilot"          "the eligibility label is created"
+assert_contains "$calls" "label create needs-human"        "the prepare-only label is created"
+assert_contains "$calls" "label create blocked"            "the blocked label is created"
+assert_contains "$calls" "label create status:in-progress" "the claim label is created"
+assert_contains "$calls" "label create model:opus"         "the model labels are created"
+assert_contains "$calls" "label create effort:high"        "the effort labels are created"
+assert_contains "$calls" "--repo acme/fresh"               "labels are created in the project's own repository"
+assert_eq "9" "$(printf '%s\n' "$calls" | grep -c 'label create')" "all nine labels are created"
+
+# A second install must stay clean: an existing label is not a failure worth
+# stopping for. Restubbed to fail like `gh label create` does on a label that
+# already exists, so the `|| printf` fallback in install-project.sh is
+# actually exercised rather than trivially passing because the stub always
+# succeeds.
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 1'
+: > "$GH_CALLS"
+sh "$RUNNER_ROOT/install-project.sh" "$fresh" 1800 >/dev/null 2>&1; rc=$?
+assert_eq "0" "$rc" "a gh failure creating an already-existing label does not fail the installer"
+assert_eq "9" "$(printf '%s\n' "$(cat "$GH_CALLS")" | grep -c 'label create')" \
+    "every label is still attempted even though gh reports each one already exists"
 
 finish

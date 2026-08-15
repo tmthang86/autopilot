@@ -48,6 +48,33 @@ for entry in ".autopilot/state.json" ".autopilot/logs/" ".autopilot/STOP" ".auto
     fi
 done
 
+# The runner queries these by name and cannot tell a missing label from an
+# empty queue, so a project without them reports no work forever. Creating
+# them is idempotent: an existing label is not an error worth stopping for.
+# repo_slug_for_project (lib/label.sh) is the one parse of the origin remote;
+# lib/queue.sh:12-24 is the other, and a third copy does not belong here.
+if SLUG=$(repo_slug_for_project "$PROJECT"); then
+    printf 'creating labels in %s\n' "$SLUG"
+    while IFS='|' read -r lname lcolour ldesc; do
+        [ -n "$lname" ] || continue
+        gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
+            --description "$ldesc" >/dev/null 2>&1 ||
+            printf '  %s already exists\n' "$lname"
+    done <<'LABELS'
+autopilot|0e8a16|Eligible for unattended execution
+needs-human|fbca04|Correctness needs a person to observe it; autopilot must not close
+blocked|d93f0b|Waiting on a human decision
+status:in-progress|1d76db|Claimed by a run
+model:sonnet|c5def5|Run with Sonnet
+model:opus|d4c5f9|Run with Opus
+effort:low|ededed|Mechanical work
+effort:medium|d9d9d9|Moderate reasoning
+effort:high|bfbfbf|Hard reasoning
+LABELS
+else
+    printf 'no origin remote — skipping label creation\n'
+fi
+
 mkdir -p "$PLIST_DIR"
 PLIST="$PLIST_DIR/$LABEL.plist"
 sed -e "s|{{LABEL}}|$LABEL|g" \

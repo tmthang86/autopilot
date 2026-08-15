@@ -1,10 +1,10 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/config.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/config.sh"
 
 good="$TEST_TMP/good.json"
-cp "$REPO_ROOT/templates/config.json" "$good"
+cp "$RUNNER_ROOT/templates/config.json" "$good"
 
 if cfg_load "$good"; then rc=0; else rc=1; fi
 assert_eq "0" "$rc" "cfg_load accepts the template"

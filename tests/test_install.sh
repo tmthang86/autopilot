@@ -13,7 +13,7 @@ repo=$(make_repo)
 name=$(basename "$repo")
 
 # --- install ---
-sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "1" "$([ -f "$repo/.autopilot/config.json" ] && echo 1 || echo 0)" "a config is created"
 assert_eq "$name" "$(jq -r .project.name "$repo/.autopilot/config.json")" "the project name is substituted"
 
@@ -39,7 +39,7 @@ assert_eq "" "$(cat "$LCTL_CALLS")" "the installer does not load or start the jo
 # everything there at login, so a job left started before a reboot would come
 # back by itself — "off until you start it" would only hold if the operator
 # remembered to stop it first.
-sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "0" "$([ -f "$HOME/Library/LaunchAgents/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
     "nothing is written into the auto-loaded LaunchAgents directory"
 
@@ -51,7 +51,7 @@ assert_eq "0" "$([ -f "$repo/.autopilot/launchd.plist" ] && echo 1 || echo 0)" \
 
 # The default is the internal disk, in a directory launchd does not auto-scan.
 unset AUTOPILOT_PLIST_DIR
-sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "1" "$([ -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist" ] && echo 1 || echo 0)" \
     "the plist defaults to the internal-disk jobs directory"
 rm -f "$HOME/.local/share/autopilot/jobs/com.autopilot.$name.plist"
@@ -65,18 +65,18 @@ assert_contains "$gi" ".autopilot/STOP"       "the kill switch is gitignored"
 
 # --- idempotence: re-running must not duplicate or clobber ---
 jq '.project.name = "EDITED"' "$repo/.autopilot/config.json" > "$TEST_TMP/c" && mv "$TEST_TMP/c" "$repo/.autopilot/config.json"
-sh "$REPO_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
+sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 >/dev/null 2>&1
 assert_eq "EDITED" "$(jq -r .project.name "$repo/.autopilot/config.json")" "an existing config is never overwritten"
 assert_eq "1" "$(grep -c '^\.autopilot/STOP$' "$repo/.gitignore")" "gitignore entries are not duplicated"
 
 # --- a non-git directory is an operator error ---
 plain="$TEST_TMP/plain"; mkdir -p "$plain"
-sh "$REPO_ROOT/install-project.sh" "$plain" >/dev/null 2>&1; rc=$?
+sh "$RUNNER_ROOT/install-project.sh" "$plain" >/dev/null 2>&1; rc=$?
 assert_eq "1" "$rc" "a directory that is not a git repository is refused"
 
 # --- start / stop ---
 : > "$LCTL_CALLS"
-sh "$REPO_ROOT/ctl.sh" start "$repo" >/dev/null 2>&1
+sh "$RUNNER_ROOT/ctl.sh" start "$repo" >/dev/null 2>&1
 calls=$(cat "$LCTL_CALLS")
 assert_contains "$calls" "enable"    "start enables the service first"
 assert_contains "$calls" "bootstrap" "start bootstraps the job"
@@ -84,7 +84,7 @@ assert_contains "$calls" "bootstrap" "start bootstraps the job"
 assert_eq "0" "$(printf '%s' "$calls" | grep -n 'enable' | cut -d: -f1 | head -1 | awk '{print ($1<=1)?0:1}')" "enable precedes bootstrap"
 
 : > "$LCTL_CALLS"
-sh "$REPO_ROOT/ctl.sh" stop "$repo" >/dev/null 2>&1
+sh "$RUNNER_ROOT/ctl.sh" stop "$repo" >/dev/null 2>&1
 calls=$(cat "$LCTL_CALLS")
 assert_contains "$calls" "bootout" "stop boots the job out"
 # bootout alone lasts only until the next login; disable is what persists.

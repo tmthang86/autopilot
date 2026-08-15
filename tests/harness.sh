@@ -5,7 +5,8 @@ set -u
 TESTS_RUN=0
 TESTS_FAILED=0
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
-export REPO_ROOT
+RUNNER_ROOT="$REPO_ROOT/runner"
+export REPO_ROOT RUNNER_ROOT
 
 # Every test gets its own scratch dir, removed on exit.
 TEST_TMP=$(mktemp -d "${TMPDIR:-/tmp}/autopilot-test.XXXXXX")

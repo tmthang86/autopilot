@@ -1,13 +1,13 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/config.sh"
-. "$REPO_ROOT/lib/state.sh"
-. "$REPO_ROOT/lib/guards.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/config.sh"
+. "$RUNNER_ROOT/lib/state.sh"
+. "$RUNNER_ROOT/lib/guards.sh"
 
 repo=$(make_repo)
 mkdir -p "$repo/.autopilot"
-cp "$REPO_ROOT/templates/config.json" "$repo/.autopilot/config.json"
+cp "$RUNNER_ROOT/templates/config.json" "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 state_init "$repo/.autopilot/state.json"
 
@@ -65,7 +65,7 @@ assert_eq "0" "$(state_get tasks_today -1)" "counter is actually zeroed on rollo
 
 # --- quiet hours ---
 # The clock is injected, so these assertions hold at every hour of the day.
-cfgq() { jq ".pacing.quiet_hours = $1" "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"; cfg_load "$repo/.autopilot/config.json"; }
+cfgq() { jq ".pacing.quiet_hours = $1" "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"; cfg_load "$repo/.autopilot/config.json"; }
 quiet_at() { AUTOPILOT_NOW_HM=$1 guard_quiet_hours 2>/dev/null && printf 'allow' || printf 'halt'; }
 
 cfgq '[]'

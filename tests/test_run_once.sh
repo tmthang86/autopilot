@@ -10,12 +10,12 @@ git init -q --bare "$TEST_TMP/tester-proj.git"
 git -C "$repo" remote add origin "$TEST_TMP/tester-proj.git"
 git -C "$repo" push -q origin main
 mkdir -p "$repo/.autopilot"
-jq '.verify = [{"name":"t","cmd":"true"}]' "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+jq '.verify = [{"name":"t","cmd":"true"}]' "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
 git -C "$repo" checkout -q -b autopilot/main
 git -C "$repo" checkout -q main
 
 GH_CALLS="$TEST_TMP/calls.txt"; export GH_CALLS; : > "$GH_CALLS"
-run() { sh "$REPO_ROOT/run-once.sh" --project "$repo" >/dev/null 2>&1; }
+run() { sh "$RUNNER_ROOT/run-once.sh" --project "$repo" >/dev/null 2>&1; }
 
 # --- STOP must short-circuit before anything else happens ---
 touch "$repo/.autopilot/STOP"
@@ -33,7 +33,7 @@ assert_eq "0" "$([ -d "$repo/.autopilot/lock" ] && echo 1 || echo 0)" "the lock 
 
 # --- a missing config is an operator error and must be loud ---
 bare=$(make_repo)
-sh "$REPO_ROOT/run-once.sh" --project "$bare" >/dev/null 2>&1; rc=$?
+sh "$RUNNER_ROOT/run-once.sh" --project "$bare" >/dev/null 2>&1; rc=$?
 assert_eq "1" "$rc" "missing config exits non-zero"
 
 # --- a full successful run ---
@@ -73,7 +73,7 @@ run
 assert_eq "" "$(cat "$GH_CALLS")" "the next wake stands down without touching the queue"
 
 # --- a red verify suite must discard the work rather than commit it ---
-jq '.verify = [{"name":"impossible","cmd":"false"}]' "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+jq '.verify = [{"name":"impossible","cmd":"false"}]' "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
 jq '.resume_after = 0' "$repo/.autopilot/state.json" > "$TEST_TMP/s" && mv "$TEST_TMP/s" "$repo/.autopilot/state.json"
 stub_bin claude 'echo "{\"type\":\"result\",\"is_error\":false}"; echo junk > should-not-land.txt; exit 0'
 : > "$GH_CALLS"

@@ -1,12 +1,12 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/config.sh"
-. "$REPO_ROOT/lib/agent.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/config.sh"
+. "$RUNNER_ROOT/lib/agent.sh"
 
 repo=$(make_repo)
 mkdir -p "$repo/.autopilot"
-cp "$REPO_ROOT/templates/config.json" "$repo/.autopilot/config.json"
+cp "$RUNNER_ROOT/templates/config.json" "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 
 # --- argument construction ---
@@ -19,7 +19,7 @@ assert_contains "$args" "--add-dir"                       "directory scope is pa
 assert_contains "$args" "stream-json"                     "stream output is requested"
 
 # A different permission mode must not silently become the bypass flag.
-jq '.agent.permission_mode = "acceptEdits"' "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+jq '.agent.permission_mode = "acceptEdits"' "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 args=$(agent_args sonnet low)
 assert_contains "$args" "--permission-mode acceptEdits" "a non-bypass mode is passed through as itself"
@@ -28,7 +28,7 @@ case "$args" in
     *)             leaked=0 ;;
 esac
 assert_eq "0" "$leaked" "acceptEdits does NOT enable the bypass flag"
-cp "$REPO_ROOT/templates/config.json" "$repo/.autopilot/config.json"
+cp "$RUNNER_ROOT/templates/config.json" "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 
 # --- the recorded fixture must parse ---

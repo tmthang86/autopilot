@@ -1,6 +1,6 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/log.sh"
 
 out=$(log_info "hello" 2>&1)
 assert_contains "$out" "hello" "log_info emits the message"

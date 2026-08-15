@@ -1,13 +1,13 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/config.sh"
-. "$REPO_ROOT/lib/queue.sh"
-. "$REPO_ROOT/lib/settle.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/config.sh"
+. "$RUNNER_ROOT/lib/queue.sh"
+. "$RUNNER_ROOT/lib/settle.sh"
 
 repo=$(make_repo)
 mkdir -p "$repo/.autopilot"
-cp "$REPO_ROOT/templates/config.json" "$repo/.autopilot/config.json"
+cp "$RUNNER_ROOT/templates/config.json" "$repo/.autopilot/config.json"
 cfg_load "$repo/.autopilot/config.json"
 
 GH_CALLS="$TEST_TMP/gh-calls.txt"; export GH_CALLS; : > "$GH_CALLS"

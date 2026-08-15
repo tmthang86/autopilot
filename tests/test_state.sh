@@ -1,7 +1,7 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/state.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/state.sh"
 
 f="$TEST_TMP/state.json"
 

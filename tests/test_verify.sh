@@ -1,14 +1,14 @@
 #!/bin/sh
 . "$(dirname "$0")/harness.sh"
-. "$REPO_ROOT/lib/log.sh"
-. "$REPO_ROOT/lib/config.sh"
-. "$REPO_ROOT/lib/verify.sh"
+. "$RUNNER_ROOT/lib/log.sh"
+. "$RUNNER_ROOT/lib/config.sh"
+. "$RUNNER_ROOT/lib/verify.sh"
 
 repo=$(make_repo)
 mkdir -p "$repo/.autopilot"
 
 mkcfg() {
-    jq ".verify = $1" "$REPO_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
+    jq ".verify = $1" "$RUNNER_ROOT/templates/config.json" > "$repo/.autopilot/config.json"
     cfg_load "$repo/.autopilot/config.json"
 }
 

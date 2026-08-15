@@ -24,11 +24,26 @@ assert_contains "$out" "$(cat "$RUNNER_ROOT/VERSION")" "status prints the deploy
 # this and `stop` was not, so a job that survived bootout kept firing every
 # interval behind a reassuring sentence and a zero exit status.
 
-# The job really did go: launchctl print reports it absent afterwards.
-stub_bin launchctl 'case "$1" in print) exit 1 ;; esac; exit 0'
+# The job really did go: launchctl print answers 0 (loaded) until bootout is
+# seen, then non-zero (gone) afterwards. A static stub cannot express this —
+# print has to react to whether bootout already happened — so this one records
+# calls to a file under $TEST_TMP and answers from that state.
+BOOTOUT_SEEN="$TEST_TMP/bootout-seen"
+rm -f "$BOOTOUT_SEEN"
+stub_bin launchctl 'case "$1" in
+  print) [ -f "'"$BOOTOUT_SEEN"'" ] && exit 1; exit 0 ;;
+  bootout) touch "'"$BOOTOUT_SEEN"'"; exit 0 ;;
+esac
+exit 0'
 out=$(sh "$RUNNER_ROOT/ctl.sh" stop "$repo" 2>&1); rc=$?
 assert_eq "0" "$rc" "a stop that really stopped the job exits 0"
 assert_contains "$out" "stopped" "a real stop still says so"
+assert_contains "$out" "will stay stopped across reboots" "a genuinely stopped job gets the real stop sentence, not the never-loaded note"
+case "$out" in
+    *"no job was loaded"*) confused=1 ;;
+    *) confused=0 ;;
+esac
+assert_eq "0" "$confused" "a real stop is not confused with a no-op stop"
 
 # The job survived bootout — it is still loaded when launchctl is asked again.
 stub_bin launchctl 'case "$1" in

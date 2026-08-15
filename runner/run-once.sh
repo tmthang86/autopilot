@@ -80,7 +80,7 @@ export AUTOPILOT_START_SHA
 # on work another run may already be doing is worse than standing down, and the
 # operator gets gh's own reason from the log line queue_claim just wrote.
 if ! queue_claim "$ISSUE"; then
-    log_error "not running the agent for #$ISSUE: the issue was never claimed, and nothing has been changed"
+    log_error "not running the agent for #$ISSUE: the issue was never claimed. No commit and no issue state were changed; the work branch may have been created or checked out, and today's log file exists"
     exit 1
 fi
 # Guarded, not bare: the counter is bookkeeping, and losing it must not abandon

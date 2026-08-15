@@ -171,6 +171,11 @@ assert_eq "$(git -C "$repo" rev-parse HEAD)" "$(git -C "$TEST_TMP/tester-proj.gi
 assert_contains "$log" "could not release #5" "the log names the release that failed"
 assert_contains "$log" "HTTP 503" "gh's own stderr reaches the log on the release path too"
 assert_contains "$log" "status:in-progress" "the log says which label was left behind"
+# This one is _settle_release's own wrapper line (runner/lib/settle.sh), not
+# queue_release's — queue.sh's message alone already satisfies the three
+# assertions above, so deleting settle.sh's wrapper line would leave them all
+# green. "an excluded label" only appears in the wrapper.
+assert_contains "$log" "an excluded label" "settle.sh's own wrapper line explains why the leftover label matters"
 assert_contains "$(cat "$GH_CALLS")" "issue close 5" "the run settles the issue rather than dying at the failed release"
 GH_FAIL_EDIT=none
 

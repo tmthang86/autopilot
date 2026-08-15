@@ -46,14 +46,21 @@ queue_candidates() {
 # issue list cannot tell "nothing ready" apart from "the ready label was
 # never created" -- both return [] (see docs/reference/observed-behaviour.md,
 # 2026-08-15). This asks the one question that can, at the cost of a single
-# extra call on the idle path.
+# extra call on the idle path. The `gh` call sits in the `if` condition, not
+# a bare assignment: under run-once.sh's `set -eu` a bare `x=$(gh ...)`
+# aborts the whole shell the moment `gh` fails, even inside an `if` body
+# (same doc, same date). Both branches return explicitly.
 _queue_check_ready_label() {
     _label=$(cfg_get queue.ready_label autopilot)
-    _names=$(gh label list --repo "$AUTOPILOT_REPO" --json name -q '.[].name' 2>/dev/null)
+    if ! _names=$(gh label list --repo "$AUTOPILOT_REPO" --json name -q '.[].name' 2>&1); then
+        log_error "cannot verify the ready label in $AUTOPILOT_REPO: $_names"
+        return 1
+    fi
     if printf '%s\n' "$_names" | grep -qxF "$_label"; then
         return 0
     fi
     log_error "ready label \"$_label\" does not exist in $AUTOPILOT_REPO — issues will never be picked up until it is created"
+    return 1
 }
 
 # Only the configured phrase counts. A bare "#7" is a cross-reference, not a
@@ -84,13 +91,18 @@ queue_is_closed() {
 # leaving the title and body empty and every label lookup false. An issue
 # labelled needs-human would then be closed automatically.
 queue_load() {
-    QUEUE_CACHE=$(queue_candidates)
+    # `|| true` on both calls: their failures are already logged, but
+    # queue_load itself (called bare by run-once.sh under `set -eu`) must
+    # always succeed -- a stood down run exits 0, log saying why, never a
+    # crash.
+    QUEUE_CACHE=$(queue_candidates) || true
     if ! printf '%s' "$QUEUE_CACHE" | jq -e 'type == "array"' >/dev/null 2>&1; then
         QUEUE_CACHE='[]'
     fi
     if [ "$(printf '%s' "$QUEUE_CACHE" | jq 'length')" -eq 0 ]; then
-        _queue_check_ready_label
+        _queue_check_ready_label || true
     fi
+    return 0
 }
 
 queue_pick() {

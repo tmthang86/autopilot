@@ -275,6 +275,37 @@ trigger to ask `gh label list` whether the configured ready label exists at all,
 it does not. A non-empty result is never checked; getting issues back already proves the label
 exists.
 
+## 2026-08-15 — a bare `var=$(gh ...)` assignment aborts under `set -eu`, even inside an `if` body
+
+**What happened.** Adding the `gh label list` guard above (in `_queue_check_ready_label`) as a
+plain `_names=$(gh ...)` assignment passed all 225 existing assertions. It still crashed
+`run-once.sh` silently: `set -eu` treats a failing command substitution assigned to a bare variable
+as a statement failure, and that holds even when the assignment sits inside the body of an `if` —
+only a failing command that is itself the `if`'s *condition* (or joined with `||`) is exempt.
+Reproduced directly:
+
+```
+$ sh -c 'set -eu; f(){ if true; then x=$(false); echo "ALIVE"; fi; }; f; echo "returned"'
+exit=1          # "ALIVE" never printed, "returned" never printed
+```
+
+**Why it matters.** `tests/harness.sh` never sets `-e`, so a test that sources `lib/queue.sh`
+directly cannot see this: the same broken function runs to completion in every unit test and only
+crashes when `run-once.sh` — which does set `-eu` — calls it for real. The crash left no log line
+at all, because the script died before `log_error`'s own `printf` could run in some call orders,
+and unconditionally before `run-once.sh` reached its `exit 0` on the empty-queue path. This is the
+same shape of failure this repository has now hit five times: something breaks, and the thing that
+would report on it says nothing, or says everything is fine.
+
+**Rule.** Every `gh` call inside `lib/` that assigns its output to a variable must be the condition
+of an `if`, not a bare assignment — `if _out=$(gh ...); then ... else ...; fi`, matching
+`queue_candidates` and `queue_is_closed`'s `2>/dev/null || printf 'UNKNOWN'` fallback, never
+`_out=$(gh ...)` on its own line. The same applies one level up: a function that calls such a
+guarded helper and wants to keep running regardless of its result must itself guard the call
+(`helper || true`) rather than let a non-zero return propagate out of a bare statement. A unit test
+against `lib/*.sh` sourced under `tests/harness.sh` cannot catch a `set -eu` regression; only a test
+that actually runs `run-once.sh` can.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

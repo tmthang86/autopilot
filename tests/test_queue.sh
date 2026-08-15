@@ -202,6 +202,21 @@ assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "autopilot" \
 assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "someone/thing" \
     "the log names the repository the label is missing from"
 
+# A repository label that merely contains the configured name as a substring
+# (e.g. "autopilot-old") must not satisfy the check -- only an exact name
+# match proves the ready label itself exists.
+AUTOPILOT_LOG_FILE="$TEST_TMP/superset-label.log"
+export AUTOPILOT_LOG_FILE
+: > "$AUTOPILOT_LOG_FILE"
+stub_bin gh 'case "$1 $2" in
+  "issue list") echo "[]" ;;
+  "label list") printf "autopilot-old\nbug\n" ;;
+  *) echo "{}" ;;
+esac'
+queue_load
+assert_contains "$(cat "$AUTOPILOT_LOG_FILE")" "does not exist" \
+    "a superset label name does not satisfy the exact-match check"
+
 # A label list that does contain the ready label must not be reported missing.
 AUTOPILOT_LOG_FILE="$TEST_TMP/label-present.log"
 export AUTOPILOT_LOG_FILE

@@ -31,6 +31,25 @@ run; rc=$?
 assert_eq "0" "$rc" "empty queue yields a clean exit"
 assert_eq "0" "$([ -d "$repo/.autopilot/lock" ] && echo 1 || echo 0)" "the lock is released on the empty-queue path"
 
+# --- a genuine gh failure while checking the ready label must not crash the
+# runner. run-once.sh runs under `set -eu`; a bare `_names=$(gh ...)`
+# assignment inside queue.sh aborts the whole script the instant `gh` fails,
+# with no log line at all, even nested inside an `if` body. This can only be
+# caught by running the real script -- tests/harness.sh never sets -e, so a
+# unit test sourcing queue.sh directly would pass whether or not the guard
+# is there. ---
+: > "$GH_CALLS"
+LOG_DIR="$repo/.autopilot/logs"; rm -f "$LOG_DIR"/*.log
+stub_bin gh 'case "$1 $2" in
+  "issue list") echo "[]" ;;
+  "label list") echo "boom: cannot list labels" >&2; exit 1 ;;
+  *) echo "{}" ;;
+esac'
+run; rc=$?
+assert_eq "0" "$rc" "a gh failure while checking the ready label still exits 0, not a crash"
+assert_contains "$(cat "$LOG_DIR"/*.log 2>/dev/null)" "boom: cannot list labels" \
+    "the log names the real gh failure rather than being empty"
+
 # --- a missing config is an operator error and must be loud ---
 bare=$(make_repo)
 sh "$RUNNER_ROOT/run-once.sh" --project "$bare" >/dev/null 2>&1; rc=$?

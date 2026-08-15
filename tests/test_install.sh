@@ -129,7 +129,8 @@ assert_contains "$(sh "$RUNNER_ROOT/ctl.sh" status "$one" 2>&1)" "alpha-svc" \
 # label from an empty queue, so the installer must skip label creation rather
 # than fail — but it must say why, not go silent.
 : > "$GH_CALLS"
-out=$(sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 2>&1)
+out=$(sh "$RUNNER_ROOT/install-project.sh" "$repo" 1800 2>&1); rc=$?
+assert_eq "0" "$rc" "the no-origin skip path still exits successfully"
 assert_eq "" "$(cat "$GH_CALLS")" "no origin remote — no label creation is attempted"
 assert_contains "$out" "no origin remote" "the installer says why it skipped label creation"
 
@@ -152,15 +153,40 @@ assert_contains "$calls" "--repo acme/fresh"               "labels are created i
 assert_eq "9" "$(printf '%s\n' "$calls" | grep -c 'label create')" "all nine labels are created"
 
 # A second install must stay clean: an existing label is not a failure worth
-# stopping for. Restubbed to fail like `gh label create` does on a label that
-# already exists, so the `|| printf` fallback in install-project.sh is
-# actually exercised rather than trivially passing because the stub always
-# succeeds.
-stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 1'
+# stopping for. Restubbed to fail exactly the way `gh label create` fails on
+# a label that already exists — verbatim, observed 2026-08-15 against a real
+# repository (see docs/reference/observed-behaviour.md) — so the installer's
+# "already exists" branch is chosen because it recognised the real message,
+# not because any non-zero exit is assumed to mean that.
+stub_bin gh '
+name=$3
+printf "%s\n" "$*" >> "$GH_CALLS"
+printf "label with name \"%s\" already exists; use \`--force\` to update its color and description\n" "$name" >&2
+exit 1
+'
 : > "$GH_CALLS"
 sh "$RUNNER_ROOT/install-project.sh" "$fresh" 1800 >/dev/null 2>&1; rc=$?
-assert_eq "0" "$rc" "a gh failure creating an already-existing label does not fail the installer"
+assert_eq "0" "$rc" "gh reporting a label already exists does not fail the installer"
 assert_eq "9" "$(printf '%s\n' "$(cat "$GH_CALLS")" | grep -c 'label create')" \
     "every label is still attempted even though gh reports each one already exists"
+
+# A genuine gh failure — bad credentials, no network, no such repository — is
+# not the same as "already exists" and must be reported as what it is, not
+# swallowed. install-project.sh has been bitten by this shape of failure
+# before (see observed-behaviour.md): something did not work and the thing
+# reporting on it said otherwise.
+rm -f "$PLISTDIR/$(label_for_project "$fresh").plist"
+stub_bin gh '
+printf "%s\n" "$*" >> "$GH_CALLS"
+printf "HTTP 401: Bad credentials (https://api.github.com/repos/acme/fresh/labels)\n" >&2
+exit 1
+'
+: > "$GH_CALLS"
+err=$(sh "$RUNNER_ROOT/install-project.sh" "$fresh" 1800 2>&1 >/dev/null); rc=$?
+assert_eq "1" "$rc" "a genuine gh failure fails the installer, not just a printed warning"
+assert_contains "$err" "label creation failed" "a real gh failure is named, not mistaken for an existing label"
+assert_contains "$err" "HTTP 401: Bad credentials" "the installer surfaces gh's actual error message"
+assert_eq "1" "$([ -f "$PLISTDIR/$(label_for_project "$fresh").plist" ] && echo 1 || echo 0)" \
+    "the rest of the install (plist included) still completes despite the label failure"
 
 finish

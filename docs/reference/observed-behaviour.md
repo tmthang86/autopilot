@@ -221,6 +221,33 @@ was a missing label reported as an empty queue; this is a job that loads but can
 non-zero last exit with no logs on disk, is the signature. `ctl.sh status` reports only whether the
 label is known, so it cannot currently distinguish any of this from a quiet night.
 
+## 2026-08-15 — `gh label create` on a label that already exists
+
+**What happened.** Ran directly against a real repository that already had the label, to see the
+actual failure shape before writing the installer's error handling:
+
+```
+$ gh label create autopilot --repo tmthang86/the companion project --color 0e8a16 --description "Eligible for unattended execution"
+label with name "autopilot" already exists; use `--force` to update its color and description
+exit=1
+```
+
+It exits non-zero, leaves the existing label untouched (no `--force`, no update), and the message
+itself names the condition — the string `already exists` is always present when this is the cause.
+
+**Why it matters.** `install-project.sh` creates nine labels on every install and must not fail
+just because a project's second install finds them already there. But `gh label create` returns
+the same non-zero exit for an expired token, no network, or a repository that does not exist. A
+handler that treats *any* non-zero exit as "already exists" reports a clean install over a
+repository that has no labels at all — this repository's third time being bitten by the same
+shape of failure, where something did not work and the thing reporting on it said otherwise (see
+the two 2026-08-15 entries above).
+
+**Rule.** Capture `gh label create`'s stderr and inspect it. Only a message containing
+`already exists` is the benign case; anything else is a real failure, gets named verbatim in the
+installer's own error output, and fails the install with a non-zero exit — the config, gitignore,
+and plist still get written, but the operator is told plainly that labels are missing and why.
+
 ## Not yet observed
 
 - **The throttled payload of `rate_limit_event`.** Only `{"status":"allowed"}` has ever been seen.

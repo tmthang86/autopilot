@@ -51,15 +51,30 @@ done
 # The runner queries these by name and cannot tell a missing label from an
 # empty queue, so a project without them reports no work forever. Creating
 # them is idempotent: an existing label is not an error worth stopping for.
+# But `gh label create` exits non-zero for that case AND for a bad token, a
+# network failure, or a repository that does not exist — collapsing all of
+# those into "already exists" would report success over a repository that
+# has no labels at all, exactly the kind of quiet lie this repository has
+# already been bitten by three times (see docs/reference/observed-behaviour.md,
+# 2026-08-15). Only the message `gh` actually prints distinguishes them.
 # repo_slug_for_project (lib/label.sh) is the one parse of the origin remote;
 # lib/queue.sh:12-24 is the other, and a third copy does not belong here.
+LABEL_FAILURES=0
 if SLUG=$(repo_slug_for_project "$PROJECT"); then
     printf 'creating labels in %s\n' "$SLUG"
     while IFS='|' read -r lname lcolour ldesc; do
         [ -n "$lname" ] || continue
-        gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
-            --description "$ldesc" >/dev/null 2>&1 ||
-            printf '  %s already exists\n' "$lname"
+        if _lerr=$(gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
+            --description "$ldesc" 2>&1 >/dev/null); then
+            continue
+        fi
+        case "$_lerr" in
+            *"already exists"*) printf '  %s already exists\n' "$lname" ;;
+            *)
+                LABEL_FAILURES=$((LABEL_FAILURES + 1))
+                printf '  %s: label creation failed: %s\n' "$lname" "$_lerr" >&2
+                ;;
+        esac
     done <<'LABELS'
 autopilot|0e8a16|Eligible for unattended execution
 needs-human|fbca04|Correctness needs a person to observe it; autopilot must not close
@@ -99,3 +114,14 @@ Pause without stopping the job:
 
   touch $AP/STOP
 EOF
+
+# The rest of the install (config, gitignore, plist) is still worth having
+# even when a label failed to create, so it all ran above. But the queue
+# cannot tell a missing label from an empty one, so a real failure here must
+# not be reported as a clean install — a non-zero exit is the loud signal an
+# operator or a calling script can actually check for.
+if [ "$LABEL_FAILURES" -gt 0 ]; then
+    printf '\nwarning: %d label(s) could not be created — see errors above. Fix and re-run before starting.\n' \
+        "$LABEL_FAILURES" >&2
+    exit 1
+fi

@@ -73,23 +73,40 @@ done
 # $SLUG came from repo_slug_for_project (lib/label.sh) above — the one parse of
 # the origin remote; lib/queue.sh:12-24 is the other, and a third does not
 # belong here.
+#
+# The ready label's name is not one of the fixed nine: lib/queue.sh reads
+# queue.ready_label from config.json at run time, so an installer that
+# hardcoded "autopilot" here would agree with the runner only for operators
+# who never touch that key. Read the same key from the same file instead —
+# $AP/config.json was just written (or kept, if the operator already edited
+# it) above — so the label the installer creates and the label the queue
+# queries can never drift apart. The other eight names stay fixed; only this
+# one is configurable.
+READY_LABEL=$(jq -r '.queue.ready_label // empty' "$AP/config.json" 2>/dev/null)
+[ -n "$READY_LABEL" ] || READY_LABEL=autopilot
+
 LABEL_FAILURES=0
 printf 'creating labels in %s\n' "$SLUG"
-while IFS='|' read -r lname lcolour ldesc; do
-    [ -n "$lname" ] || continue
-    if _lerr=$(gh label create "$lname" --repo "$SLUG" --color "$lcolour" \
-        --description "$ldesc" 2>&1 >/dev/null); then
-        continue
+_create_label() {
+    _lname=$1; _lcolour=$2; _ldesc=$3
+    if _lerr=$(gh label create "$_lname" --repo "$SLUG" --color "$_lcolour" \
+        --description "$_ldesc" 2>&1 >/dev/null); then
+        return 0
     fi
     case "$_lerr" in
-        *"already exists"*) printf '  %s already exists\n' "$lname" ;;
+        *"already exists"*) printf '  %s already exists\n' "$_lname" ;;
         *)
             LABEL_FAILURES=$((LABEL_FAILURES + 1))
-            printf '  %s: label creation failed: %s\n' "$lname" "$_lerr" >&2
+            printf '  %s: label creation failed: %s\n' "$_lname" "$_lerr" >&2
             ;;
     esac
+}
+
+_create_label "$READY_LABEL" 0e8a16 "Eligible for unattended execution"
+while IFS='|' read -r lname lcolour ldesc; do
+    [ -n "$lname" ] || continue
+    _create_label "$lname" "$lcolour" "$ldesc"
 done <<'LABELS'
-autopilot|0e8a16|Eligible for unattended execution
 needs-human|fbca04|Correctness needs a person to observe it; autopilot must not close
 blocked|d93f0b|Waiting on a human decision
 status:in-progress|1d76db|Claimed by a run
@@ -109,6 +126,21 @@ sed -e "s|{{LABEL}}|$LABEL|g" \
     -e "s|{{HOME}}|$HOME|g" \
     "$HERE/templates/launchd.plist.tmpl" > "$PLIST"
 
+# Checked, and reported, before the success banner below — never after. The
+# rest of the install (config, gitignore, plist) is still worth having even
+# when a label failed to create, so it all ran above regardless. But the
+# queue cannot tell a missing label from an empty one, so a real failure here
+# must not be reported as a clean install: an operator reading stdout and
+# stderr interleaved must meet the warning before the success-shaped block,
+# never the other way around, or the block reads as the whole story. A
+# non-zero exit is also the loud signal an operator or a calling script can
+# actually check for.
+if [ "$LABEL_FAILURES" -gt 0 ]; then
+    printf '\nwarning: %d label(s) could not be created — see errors above. Fix and re-run before starting.\n' \
+        "$LABEL_FAILURES" >&2
+    exit 1
+fi
+
 cat <<EOF
 
 Wrote $PLIST (deliberately not in ~/Library/LaunchAgents, which launchd auto-loads)
@@ -124,14 +156,3 @@ Pause without stopping the job:
 
   touch $AP/STOP
 EOF
-
-# The rest of the install (config, gitignore, plist) is still worth having
-# even when a label failed to create, so it all ran above. But the queue
-# cannot tell a missing label from an empty one, so a real failure here must
-# not be reported as a clean install — a non-zero exit is the loud signal an
-# operator or a calling script can actually check for.
-if [ "$LABEL_FAILURES" -gt 0 ]; then
-    printf '\nwarning: %d label(s) could not be created — see errors above. Fix and re-run before starting.\n' \
-        "$LABEL_FAILURES" >&2
-    exit 1
-fi

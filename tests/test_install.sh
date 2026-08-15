@@ -208,4 +208,43 @@ assert_contains "$err" "HTTP 401: Bad credentials" "the installer surfaces gh's 
 assert_eq "1" "$([ -f "$PLISTDIR/$(label_for_project "$fresh").plist" ] && echo 1 || echo 0)" \
     "the rest of the install (plist included) still completes despite the label failure"
 
+# The success banner used to print to stdout unconditionally, before the
+# label-failure result was evaluated — exit status and stderr were already
+# correct, but an operator reading stdout alone met a success-shaped block
+# first and the warning second. Capture stdout and stderr interleaved, the way
+# an operator actually reads a terminal, and require the banner not to appear
+# at all when the install is reported as failed.
+: > "$GH_CALLS"
+out=$(sh "$RUNNER_ROOT/install-project.sh" "$fresh" 1800 2>&1)
+case "$out" in
+    *"ctl.sh start"*) banner_on_failure=1 ;;
+    *)                banner_on_failure=0 ;;
+esac
+assert_eq "0" "$banner_on_failure" "the success banner never appears when label creation failed"
+
+# --- the installer must create whatever queue.ready_label says, not a
+# hardcoded "autopilot" ---
+# lib/queue.sh reads queue.ready_label from config.json at run time. Before
+# this fix the installer always created a label named "autopilot", agreeing
+# with the runner only for operators who never touch that key. An operator
+# who edits it gets a label that was never created and a queue that reports
+# empty — _queue_check_ready_label catches it, but only at runtime, on every
+# idle tick, long after the install looked clean.
+custom="$TEST_TMP/custom/repo"
+mkdir -p "$custom"
+git -C "$custom" init -q
+git -C "$custom" remote add origin https://github.com/acme/custom.git
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"; exit 0'
+sh "$RUNNER_ROOT/install-project.sh" "$custom" 1800 >/dev/null 2>&1
+jq '.queue.ready_label = "ready-for-agent"' "$custom/.autopilot/config.json" > "$TEST_TMP/c" \
+    && mv "$TEST_TMP/c" "$custom/.autopilot/config.json"
+rm -f "$PLISTDIR/$(label_for_project "$custom").plist"
+: > "$GH_CALLS"
+sh "$RUNNER_ROOT/install-project.sh" "$custom" 1800 >/dev/null 2>&1
+calls=$(cat "$GH_CALLS")
+assert_contains "$calls" "label create ready-for-agent" \
+    "the installer creates the configured ready label"
+assert_eq "0" "$(printf '%s\n' "$calls" | grep -c 'label create autopilot ')" \
+    "the installer does not also create the old hardcoded name"
+
 finish

@@ -58,11 +58,20 @@ labels the queue reads. Nothing in `runner/lib/` knows what language a project i
 
 ## Installing
 
+One command clones the runner and prepares a project — it writes the job but starts nothing:
+
 ```sh
-git clone https://github.com/tmthang86/autopilot.git ~/.local/share/autopilot
-sh ~/.local/share/autopilot/runner/install-project.sh /path/to/project   # writes the job, starts nothing
+curl -fsSL https://raw.githubusercontent.com/tmthang86/autopilot/main/install.sh \
+  | sh -s -- /path/to/project
 sh ~/.local/share/autopilot/runner/ctl.sh start /path/to/project          # begins a session
 sh ~/.local/share/autopilot/runner/ctl.sh stop  /path/to/project          # ends it, and it stays ended
+```
+
+To read the script before running it, download it first, then run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tmthang86/autopilot/main/install.sh -o install.sh
+sh install.sh /path/to/project
 ```
 
 The installer refuses a project with no `origin` remote, because the runner cannot work without
@@ -84,7 +93,7 @@ Full instructions, including how to find a job orphaned by an upgrade or a repos
 
 ## Status
 
-Working. 325 assertions across 15 test files, and exercised end to end under launchd on
+Working. 335 assertions across 16 test files, and exercised end to end under launchd on
 2026-08-15 against a real repository with the real agent: issue claimed, work implemented,
 verification run, commit pushed, issue closed, `main` untouched. The rejection path was proven
 too — a red suite rewinds to the commit the run started from and leaves the issue open. That run

@@ -14,19 +14,24 @@ runner queries; producing the issues themselves is the job of the
 
 ## Get the runner onto this machine
 
-Getting the runner onto a machine means either deploying it from the plugin cache or cloning this
-repository. The deployment copy is the part a scheduled run needs; a clone also carries `docs/`,
-`tests/`, and `.git`, which are harmless but not pruned from a plain clone:
+The one-liner clones the runner to `~/.local/share/autopilot/` and prepares the project in one
+step — it writes the job but starts nothing:
 
 ```sh
-# Deploy just the runner from the plugin (the skill does this for you), or:
-sh ~/.local/share/autopilot/runner/deploy.sh
-
-# Clone the whole repository instead:
-git clone https://github.com/tmthang86/autopilot ~/.local/share/autopilot
+curl -fsSL https://raw.githubusercontent.com/tmthang86/autopilot/main/install.sh \
+  | sh -s -- /path/to/project [interval-seconds]
 ```
 
-Every command in this guide runs a script from inside `runner/`:
+To read the script before running it, download it first:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tmthang86/autopilot/main/install.sh -o install.sh
+sh install.sh /path/to/project
+```
+
+If the runner is already present as a git checkout, the script fast-forwards it; a checkout that
+has diverged is left untouched and the installer stops. Every command in this guide runs a script
+from inside `runner/`:
 
     ~/.local/share/autopilot/runner/install-project.sh
     ~/.local/share/autopilot/runner/ctl.sh

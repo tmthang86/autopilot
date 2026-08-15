@@ -31,7 +31,7 @@ Verified by reading the code on 2026-08-15, not assumed:
 | A blocked settlement path already exists | `lib/settle.sh:92` — `settle_blocked()` |
 | Path containment is an already-accepted lesson | Recorded in the consuming project's plan as the one Baton behaviour worth copying verbatim: assert the resolved path stays under the managed directory |
 | The agent runs with permission checks disabled | `lib/agent.sh:5-9` maps `bypassPermissions` to `--dangerously-skip-permissions`; flagged by automated security review on 2026-08-15 and accepted by operator decision |
-| **The queue already holds eight M0 issues, all labelled `autopilot`** | `gh issue list --repo tmthang86/the companion project`, read 2026-08-15 |
+| **The queue already holds eight M0 issues, all labelled `autopilot`** | `gh issue list --repo owner/myproject`, read 2026-08-15 |
 | **Those issues already bind intent, but to reference and architecture documents rather than to a plan** | #1 cites `product/prd.md` and `architecture/building-blocks.md`; #3 cites `reference/upstream-api.md` and reproduces its page-clamping table inline; #8 cites PRD requirements by number. None names a file under `docs/plans/` |
 
 The second row changes the design. Intent for a real task is not one plan — it is the plan plus the

@@ -8,7 +8,7 @@
 
 **Tech Stack:** POSIX shell, `jq` 1.7.1 for all JSON, `gh` 2.97.0 for the queue, `git`, the `claude` CLI in headless mode. Tests are plain shell against real throwaway git repositories with `gh` and `claude` stubbed on `PATH`.
 
-**Spec:** [`the companion project/docs/plans/2026-08-14-autopilot-delivery.md`](https://github.com/tmthang86/the companion project/blob/main/docs/plans/2026-08-14-autopilot-delivery.md) — the design this plan implements. Also [`docs/decisions/0001-one-task-per-wake-over-persistent-daemon.md`](../decisions/0001-one-task-per-wake-over-persistent-daemon.md).
+**Spec:** `docs/plans/2026-08-14-autopilot-delivery.md` in the consuming project — the design this plan implements. It lives in that project's own repository, not here. Also [`docs/decisions/0001-one-task-per-wake-over-persistent-daemon.md`](../decisions/0001-one-task-per-wake-over-persistent-daemon.md).
 
 ## Global Constraints
 
@@ -763,7 +763,7 @@ watching it. The daily counter resets on date rollover for the same reason."
 Run against the real repository so the shape is real, never invented:
 
 ```bash
-gh issue list --repo tmthang86/the companion project --state open --limit 5 \
+gh issue list --repo owner/myproject --state open --limit 5 \
   --json number,title,body,labels,milestone > tests/fixtures/gh-issue-list.json
 ```
 

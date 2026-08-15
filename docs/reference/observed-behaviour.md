@@ -227,7 +227,7 @@ label is known, so it cannot currently distinguish any of this from a quiet nigh
 actual failure shape before writing the installer's error handling:
 
 ```
-$ gh label create autopilot --repo tmthang86/the companion project --color 0e8a16 --description "Eligible for unattended execution"
+$ gh label create autopilot --repo owner/myproject --color 0e8a16 --description "Eligible for unattended execution"
 label with name "autopilot" already exists; use `--force` to update its color and description
 exit=1
 ```

@@ -13,7 +13,7 @@ Installing against the first real target broke it immediately. The project sits 
 APFS volume, and `mount` shows why:
 
 ```
-/dev/disk5s1 on /Volumes/REDACTED (apfs, local, nodev, nosuid, journaled, noowners)
+/dev/disk5s1 on /Volumes/EXTERNAL (apfs, local, nodev, nosuid, journaled, noowners)
 ```
 
 `noowners` disables ownership on the volume. **launchd refuses to bootstrap a plist from such a

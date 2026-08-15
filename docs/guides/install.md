@@ -31,10 +31,16 @@ inside `runner/`:
     ~/.local/share/autopilot/runner/ctl.sh
 
 The repository carries Claude Code plugin manifests (`.claude-plugin/`), so `/plugin marketplace
-add tmthang86/autopilot` followed by `/plugin install autopilot@autopilot` is the intended route.
-It does not work today: `tmthang86/autopilot` is currently **private**, and that command fails for
-anyone without access to it. Until the repository is made public — or the skill layer's automatic
-deployment lands — cloning it yourself is the only way to get the runner running.
+add tmthang86/autopilot` followed by `/plugin install autopilot@autopilot` succeeds — the
+repository has been public since 2026-08-15.
+
+**It does not yet give you a running runner, though.** Installing the plugin places the repository
+in Claude Code's plugin cache, at a path that carries its version. Two things are missing. The
+plugin ships no skills yet, so there is nothing to invoke. And nothing copies `runner/` out to the
+stable path that installed launchd jobs point at — that deployment step is designed and not built
+(see [the skill layer design](../design/2026-08-15-skill-layer-design.md)). Until it lands,
+cloning as above is what actually gets the runner working, and the plugin route is worth taking
+only if you want the repository to update itself with `/plugin update`.
 
 The deployed clone is never edited in place. Fix things in the repository, then `git pull` (or
 re-clone) `~/.local/share/autopilot` to pick up the fix. `ctl.sh status` names the version it is

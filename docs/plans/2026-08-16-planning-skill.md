@@ -1090,8 +1090,8 @@ that are under test here."
 ### Task 6: The `autopilot-planning` skill
 
 - **Done when:** `skills/autopilot-planning/SKILL.md` exists with valid frontmatter and describes all
-  eight phases, both hard gates, and the rule that it commits nothing.
-- **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## ' skills/autopilot-planning/SKILL.md` → at least 5
+  nine phases, both hard gates, the no-idea branch of phase 0, and the rule that it commits nothing.
+- **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 9
 - **Intent:** `docs/design/2026-08-16-multi-harness-role-pipeline-design.md`
 - **Depends on:** Task 5
 - **Tier:** deep
@@ -1115,7 +1115,7 @@ Create `skills/autopilot-planning/SKILL.md`:
 ```markdown
 ---
 name: autopilot-planning
-description: Turn an idea into a committed plan the unattended runner can be given. Use at the start of a project or a milestone, before autopilot-deliver. Produces the design, the documentation set, and a plan whose steps carry every field the delivery chain consumes.
+description: Turn an idea into a committed plan the unattended runner can be given — brainstorm, design, then plan. Use at the start of a project or a milestone, before autopilot-deliver. Also use when there is time but no particular idea: it proposes what is next from the project's own roadmap, open items, and blocked issues rather than asking a blank question.
 ---
 
 # autopilot-planning
@@ -1130,6 +1130,8 @@ It is the first of three: **`autopilot-planning` → `autopilot-deliver` → `au
 
 - A project or a milestone is starting and there is no plan yet.
 - A project has a plan but not the documentation set the delivery chain expects.
+- **The operator has time and no particular idea.** Phase 0 proposes what is next from the
+  project's own registers rather than asking a blank question.
 
 ## It writes. It does not commit.
 
@@ -1142,7 +1144,8 @@ Say so plainly when stopping: which files were written, and that committing them
 ## Flow
 
 ```
-0  Classify              spike | bounded | architectural
+0  Identify the work      idea given → use it;  none given → propose from the project itself
+   then classify         spike | bounded | architectural
 1  Survey                new repository → scaffold;  existing → read what is there
 2  Brainstorm            one question at a time, 2–3 approaches with a recommendation
 3  Design                docs/design/YYYY-MM-DD-<topic>-design.md
@@ -1153,13 +1156,46 @@ Say so plainly when stopping: which files were written, and that committing them
 8  ▮ STOP                the operator reads, approves, and commits
 ```
 
-## Phase 0 — classify, and say the classification out loud
+## Phase 0 — identify the work, then classify it
 
-- **Spike** — a feasibility question whose output is an answer, not code. No design, no plan.
-- **Bounded** — a well-scoped change to a flow that already exists in this repository. A short
-  design in conversation, then straight to implementation. No plan document.
+**If the operator arrived with an idea, use it.** If they arrived with nothing, do not ask *"what
+would you like to build?"* — the project already knows, and asking a blank question wastes the one
+thing the operator came here to be spared.
+
+Read the tracking artifacts and **propose candidates**, newest evidence first:
+
+| Source | What it offers |
+|---|---|
+| `docs/product/roadmap.md` | The next milestone whose predecessor has closed, and its exit criteria |
+| `docs/product/open-items.md` | Unverified guarantees, open questions, and accepted debt |
+| open issues labelled `blocked` | Questions the runner stopped on and nobody has answered |
+| open `needs-human` issues with commits | Work finished but never accepted |
+| `docs/README.md` status table | Documents marked ⏳ Pending whose milestone has arrived |
+
+Present them as a short list with what each would cost and why it might be next, and let the
+operator choose. Only when every one of those is genuinely empty — a new repository with no history
+— ask what they want to build.
+
+This closes a loop rather than adding a step: `autopilot-review` surfaces these items each morning
+and `open-items.md` records them, so the register that ends one cycle begins the next.
+
+**Then classify, and say the classification out loud.**
+
+- **Spike** — a feasibility question whose output is an answer, not code. No design, no plan, and
+  **nothing reaches the delivery chain**. That is correct: a spike deliberately produces no work for
+  the runner. Report the finding and stop.
+- **Bounded** — a well-scoped change to a flow that already exists here. **It still produces a plan
+  file**, because the plan file is the interface to `autopilot-deliver` and there is no other way in.
+  What shrinks is everything around it: fewer questions in phase 2, one lens instead of two in
+  phase 4, and the design becomes a paragraph in the plan's *Context* rather than its own document.
+  One to three tasks is normal.
 - **Architectural** — a new project, a new subsystem, or a change to how components fit together.
   The full flow below.
+
+**Bounded and architectural differ in size, never in kind.** A bounded change that skipped the plan
+would have to be implemented by hand, which is a different product than the one this chain exists to
+be. If a change is genuinely too small to be worth an issue, say so plainly and let the operator do
+it directly — do not produce a plan nobody wanted.
 
 When in doubt, take the heavier path. Hidden complexity upgrades the path mid-task; nothing
 downgrades it.
@@ -1265,11 +1301,14 @@ Then stop. Do not offer to commit. Do not invoke `autopilot-deliver`.
 
 ```sh
 head -4 skills/autopilot-planning/SKILL.md
-grep -c '^## ' skills/autopilot-planning/SKILL.md
+grep -c '^## Phase' skills/autopilot-planning/SKILL.md
+grep -c 'none given\|no particular idea' skills/autopilot-planning/SKILL.md
 ```
 
 Expected: the first four lines show `---`, `name: autopilot-planning`, a `description:` line, `---`;
-then a count of at least 5.
+then `9`, one per phase; then at least `1`, proving the no-idea branch of phase 0 survived the
+writing. That branch is the one most likely to be dropped as an edge case, and it is the entry point
+for every morning the operator has time and no particular plan.
 
 - [ ] **Step 3: Commit**
 

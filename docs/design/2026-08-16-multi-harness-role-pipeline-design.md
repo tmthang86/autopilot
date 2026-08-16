@@ -1,9 +1,10 @@
 # Multi-harness delivery with a role pipeline — design
 
 > **Type:** Design · **Date:** 2026-08-16 · **Status:** Approved
-> **Scope:** Five changes taken together: a harness abstraction, a project-defined tier ladder, a
-> three-role runtime pipeline, provider preflight in the deliver skill, and a run journal with a
-> separate dashboard. Includes the decision to rewrite the runner in Rust and what replaces Rule Zero.
+> **Scope:** Six changes taken together: a harness abstraction, a project-defined tier ladder, a
+> three-role runtime pipeline, provider preflight in the deliver skill, a run journal with a separate
+> dashboard, and a third skill — `autopilot-planning` — that produces the plans the other two consume.
+> Includes the decision to rewrite the runner in Rust and what replaces Rule Zero.
 
 ## Context
 
@@ -50,6 +51,13 @@ Each was an operator decision made on 2026-08-16, not an inference.
 | 14 | The runner is **rewritten in Rust**, shelling out to `git` and `gh` exactly as today | Supersedes Rule Zero's "POSIX shell only". See *Why Rust* |
 | 15 | The rewrite is a **single cutover**; the shell runner is frozen as the reference specification | Two sources of truth are the thing §1 exists to prevent, so the overlap is bounded and ends |
 | 16 | The dashboard is **Go + htmx**, living outside the runner | Server-rendered fragments, htmx vendored as one embedded file, no build step beyond `go build` |
+| 17 | A third skill, **`autopilot-planning`**, precedes delivery. The trio is planning → deliver → review | The product becomes idea-to-shipped, not queue-to-shipped |
+| 18 | Planning writes everything and **commits nothing**; the operator commits | Deliver's commit gate is a mechanical check. A skill that commits its own plan deletes the gate's meaning |
+| 19 | The documentation set is **arc42 + Diátaxis + Nygard ADRs**, as already proven in the companion project | Not invented here. Adopted from a repository where it has been running |
+| 20 | **`AGENTS.md` is the single source of agent rules.** `CLAUDE.md` and every other tool's rule file are thin pointers to it | Copying rules into five files is the stale-document disease the sync table exists to prevent |
+| 21 | Plan steps are **structured**: goal · done-when · verify · Intent · depends-on · tier · needs-human | Sharding becomes mechanical, and a malformed step is caught while writing the plan rather than at 3 a.m. |
+| 22 | Tracking extends the companion project's artifacts rather than adding a `STATUS.md` | One file every commit touches is a merge conflict per task branch |
+| 23 | The **implementer writes the documentation its step binds**; the reviewer treats a missing update as grounds for rejection | The §4 sync table becomes enforceable with nobody watching |
 
 ## Why Rust, and what replaces Rule Zero
 
@@ -111,7 +119,8 @@ autopilot/                       the plugin repository
 │   │       ├── mod.rs           the trait, and the default classifier
 │   │       ├── claude.rs  opencode.rs  pi.rs  codex.rs
 │   └── templates/               prompt templates, one per role
-├── skills/                      autopilot-deliver · autopilot-review   (unchanged in kind)
+├── skills/                      autopilot-planning · autopilot-deliver · autopilot-review
+│                                the trio: idea → plan → issues → unattended delivery → morning brief
 └── dashboard/                   Go + htmx. Read-only. The runner never invokes it
     ├── main.go                  journal reader, HTTP handlers, embedded assets
     └── ui/                      templates + vendored htmx.min.js
@@ -341,6 +350,135 @@ that is genuinely enforceable is therefore `wake_timeout_s`, which is harness-ag
 measurable. `wake_budget_usd` is best-effort and is documented as such rather than presented as a
 guarantee.
 
+## The skill trio, and `autopilot-planning`
+
+Until now the product started at a queue. `docs/guides/install.md` stated the precondition and the
+skill-layer design removed it for issues, but the plan those issues implement still had to exist
+before anything here could help. `autopilot-planning` closes that end.
+
+```
+autopilot-planning  ──▶  autopilot-deliver  ──▶  the runner  ──▶  autopilot-review
+   person present         person present          nobody watching     person present
+        │                       │
+        └─ plan + docs ─────────┘
+           the operator commits  ▲
+                                 └─ deliver's phase-1 commit gate already checks this, mechanically
+```
+
+The seam already exists. Planning stops exactly where deliver's commit gate begins, so no new
+handshake is invented — planning simply has to produce what that gate already demands.
+
+### Where this comes from
+
+Three sources, each contributing something the others do not. Nothing below is invented for this
+design.
+
+| Source | What it contributes |
+|---|---|
+| **the companion project** (`a private repository`) | The documentation set and, more importantly, the artifacts that keep it true: the §4 binding sync table, the `docs/README.md` status table, and the plan template. Its `CLAUDE.md` §10 already describes the planner / implementer / documenter / coordinator / reviewer split this repository is automating — including *"the brief names files; the implementer reads them itself"*, which is the rule decision 2 depends on |
+| **[gstack](https://gstacks.org/)** | Reviewing a plan through **distinct role lenses before approval** — `/plan-ceo-review` for the problem as the user meets it, then `/plan-eng-review` for architecture, data flow, state transitions and edge cases |
+| **[superpowers](https://github.com/obra/superpowers)** | Process discipline: classify the request before answering it, ask one question at a time, propose alternatives with a recommendation, hard approval gates, and a self-review pass over the written artifact |
+
+### The eight phases
+
+```
+0  Classify              spike | bounded | architectural                       superpowers
+1  Survey                new repository → scaffold;  existing → read what is there
+2  Brainstorm            one question at a time, 2–3 approaches, a recommendation
+3  Design                docs/design/YYYY-MM-DD-<topic>-design.md
+4  ▮ TWO-LENS REVIEW     the product lens, then the engineering lens            gstack
+5  Documentation set     AGENTS.md + pointers · the docs/ tree · sync table · status table
+6  Plan                  docs/plans/YYYY-MM-DD-<topic>.md, structured work breakdown
+7  Self-review           placeholders · contradictions · every step carries all seven fields
+8  ▮ STOP                the operator reads, approves, and commits
+```
+
+Phase 5 runs only when something is missing or has drifted; on an established project it is a check,
+not a rewrite.
+
+### The documentation set
+
+Adopted from the companion project, which combines three standards rather than inventing a fourth:
+
+```
+AGENTS.md         ← the rules. The single source; other agents' rule files point here
+README.md         ← what this is, how to run it
+CHANGELOG.md      ← Keep a Changelog + SemVer
+docs/
+├── README.md         ← the map, and the STATUS TABLE for every document
+├── product/          prd.md · roadmap.md (milestones + exit criteria) · glossary.md · open-items.md
+├── architecture/     arc42 §1–8, §10–12
+├── decisions/        ADRs, arc42 §9 — Nygard format, never edited once accepted
+├── reference/        what is it — API behaviour, schema, commands
+├── guides/           how do I — setup, testing, release
+├── explanation/      why — conceptual background
+└── plans/            what next — written before the code
+```
+
+Keep the four Diátaxis modes distinct. Blurring them is how documentation rots.
+
+**`AGENTS.md` is canonical.** It is now a cross-tool standard governed under the Linux Foundation's
+Agentic AI Foundation and read by Codex, Cursor, and Copilot among others. `CLAUDE.md`,
+`.clinerules`, Kiro steering files and their equivalents are written as one-line pointers to it.
+Copying the rules into each would create exactly the drift the sync table exists to prevent — five
+files that disagree, and no way to tell which one an agent actually read.
+
+### Keeping track
+
+Four artifacts, all of them already load-bearing in the companion project, plus one addition:
+
+| Artifact | Answers |
+|---|---|
+| `docs/README.md` status table | Every document, its status, and which milestone it belongs to |
+| Each plan's step table | Which steps are done, which are in flight, which are the reviewer's |
+| `docs/product/roadmap.md` | Milestones and their exit criteria — the gate for merging to `main` |
+| `docs/product/open-items.md` | **New.** Questions with no answer yet, and accepted technical debt |
+| `AGENTS.md` sync table | Change *this*, and you must update *that*, in the same commit |
+
+A single root `STATUS.md` was rejected: every commit would touch it, and with one branch per task
+that is a merge conflict per task.
+
+### The structured work breakdown
+
+This is what makes a plan a contract between the two skills rather than prose one of them
+interprets. Every step declares seven fields, and every field has exactly one consumer:
+
+```markdown
+### Step 7 — Add the opencode adapter
+- **Done when:**   `available()` and `models()` return correctly on a machine with opencode installed
+- **Verify:**      `cargo test harness::opencode` → six assertions green
+- **Intent:**      docs/design/2026-08-16-multi-harness-role-pipeline-design.md
+- **Depends on:**  Step 4
+- **Tier:**        standard
+- **Needs human:** no
+```
+
+| Field | Consumed by |
+|---|---|
+| Done when · Verify | the issue body, and the `verify` commands the runner executes |
+| **Intent** | `queue_intent`. A task without it is refused **before a single token is spent** (ADR-0005) |
+| Depends on | the creation order in deliver's phase 5 |
+| Tier | the `tier:<name>` label |
+| Needs human | the `needs-human` label, which leaves the issue open for a person |
+
+Phase 7 can therefore check mechanically: a step missing `Verify` or `Intent` is an issue the runner
+will refuse at 3 a.m., and catching it while writing the plan costs nothing.
+
+### Who writes the documentation, with nobody watching
+
+the companion project forbids its implementer from writing any Markdown, because a human-present Claude Code
+session writes it instead. That option does not exist here.
+
+**The implementer writes the documentation its step binds, and the reviewer treats a missing update
+as grounds for rejection.** The plan's *Documentation to update* list names the obligation, so it is
+neither discovered nor invented at run time — it was approved with the plan. This is what makes the
+sync table enforceable unattended, and it is why the reviewer sits at a higher tier: judging whether
+a document still tells the truth is harder than writing the code it describes.
+
+The runner's prompt keeps its existing prohibitions — it does not write plans, does not modify
+`AGENTS.md`, and does not alter an accepted ADR. Those are intent, and §2.4 reserves intent for a
+person.
+
 ## Preflight in `autopilot-deliver`
 
 Phase 2 (*Prepare the project*) gains tier resolution, and follows the rule already established there
@@ -434,6 +572,12 @@ throwaway repository, as today.
   diagram gains `dashboard/` and the runner becomes a compiled binary
 - `docs/reference/observed-behaviour.md` — gains the three harness measurements above, dated
 - `docs/guides/install.md` — gains tier configuration and the preflight; loses `jq` as a dependency
+- **`CLAUDE.md` becomes a pointer to a new `AGENTS.md`** in this repository too, per decision 20.
+  This repository must follow the convention its own planning skill installs elsewhere
+- `skills/autopilot-deliver/SKILL.md` — phase 2 gains tier preflight; phase 3 reads the structured
+  work breakdown instead of interpreting prose, and writes `tier:` in place of `model:` / `effort:`
+- `skills/autopilot-review/SKILL.md` — gains the journal as a seventh source, above all the orphaned
+  roles it makes visible
 
 ## Out of scope
 
@@ -445,6 +589,11 @@ throwaway repository, as today.
 - **The dashboard writing anything.** It reads journals. Acting on what it shows is done through the
   existing skills or by hand.
 - **Re-sharding after a plan changes.** Still a real problem, still a different one.
+- **Planning committing anything.** Decision 18. It writes and stops; the commit is the operator's
+  approval and the gate deliver checks.
+- **Migrating an existing project's documentation wholesale.** Phase 5 scaffolds what is missing and
+  reports what has drifted. Rewriting a large existing documentation set is a task for a plan, not a
+  side effect of running a skill.
 - **Adapters for harnesses that cannot be run on the developing machine.** The contract accommodates
   them; the plan does not claim them.
 

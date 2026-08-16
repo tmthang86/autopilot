@@ -1,6 +1,6 @@
 # The planning skill and the documentation set — implementation plan
 
-> **Type:** Plan · **Date:** 2026-08-16 · **Status:** Approved
+> **Type:** Plan · **Date:** 2026-08-16 · **Status:** Approved — amended after approval, see below
 > **Scope:** Sub-project F of the multi-harness design — `autopilot-planning`, the documentation
 > convention it installs, and the mechanical check that makes a plan a contract rather than prose.
 
@@ -42,6 +42,13 @@ Copied verbatim from the spec and `CLAUDE.md`. Every task's requirements implici
   the plan directly.
 
 ---
+
+> **Amended after approval, 2026-08-16.** Writing plans 2–4 showed that the validator specified in
+> Task 3 rejected every plan citing a file it was about to create — including this one. `AGENTS.md`
+> and `tests/conformance.sh` both failed a naive existence check while being perfectly correct.
+> Task 3's validator and Task 4's template now resolve a path against the repository **plus** every
+> path any task, or a plan named as a `Prerequisite:`, says it will create. Task 3's assertion count
+> rose from 14 to 16. **Re-approval is needed for that change and nothing else.**
 
 ## Context
 

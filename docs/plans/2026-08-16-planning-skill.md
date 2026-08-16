@@ -1,6 +1,6 @@
 # The planning skill and the documentation set — implementation plan
 
-> **Type:** Plan · **Date:** 2026-08-16 · **Status:** Awaiting approval
+> **Type:** Plan · **Date:** 2026-08-16 · **Status:** Approved
 > **Scope:** Sub-project F of the multi-harness design — `autopilot-planning`, the documentation
 > convention it installs, and the mechanical check that makes a plan a contract rather than prose.
 
@@ -448,7 +448,7 @@ three files, so an unverified guarantee is visible without reading all of them."
 
 - **Done when:** `validate-plan.sh` exits 0 on a well-formed plan, exits 1 naming every missing field
   on a malformed one, and reports an `Intent:` path that does not exist.
-- **Verify:** `sh tests/test_plan_format.sh` → 14 assertions, `0 failed`; `shellcheck -s sh skills/autopilot-planning/validate-plan.sh` → clean
+- **Verify:** `sh tests/test_plan_format.sh` → 16 assertions, `0 failed`; `shellcheck -s sh skills/autopilot-planning/validate-plan.sh` → clean
 - **Intent:** `docs/design/2026-08-16-multi-harness-role-pipeline-design.md`
 - **Depends on:** —
 - **Tier:** standard
@@ -609,6 +609,36 @@ case "$out" in
 esac
 assert_eq "no" "$leaked" "the inner example never reaches the report"
 
+# A path a later task creates is not a typo. Measured on this repository's own
+# plans: AGENTS.md and tests/conformance.sh both failed a naive existence check
+# while being perfectly correct, which would have made every plan unvalidatable.
+cat > "$WORK/deferred.md" <<'EOF'
+# A plan citing what it will create
+
+### Task 1: Cite a file this plan creates later
+- **Done when:** it exists
+- **Verify:** `sh tests/run.sh` → ALL PASS
+- **Intent:** docs/design/not-yet.md
+- **Depends on:** —
+- **Tier:** standard
+- **Needs human:** no
+
+### Task 2: Create it
+- **Done when:** written
+- **Verify:** `sh tests/run.sh` → ALL PASS
+- **Intent:** docs/design/real.md
+- **Depends on:** Task 1
+- **Tier:** standard
+- **Needs human:** no
+
+**Files:**
+- Create: docs/design/not-yet.md
+EOF
+
+out=$(sh "$V" "$WORK/deferred.md" "$WORK" 2>&1); rc=$?
+assert_eq "0" "$rc" "an Intent naming a file a task creates is accepted"
+assert_eq "" "$out" "a deferred path produces no output"
+
 # Finally, the hardest real input available: this plan itself.
 out=$(sh "$V" "$REPO_ROOT/docs/plans/2026-08-16-planning-skill.md" "$REPO_ROOT" 2>&1); rc=$?
 assert_eq "0" "$rc" "this repository's own plan validates"
@@ -654,6 +684,7 @@ if [ ! -f "$PLAN" ]; then
 fi
 
 PROBLEMS=0
+CREATED=" "
 
 # Reports every field absent from the block just collected.
 check_task() {
@@ -669,17 +700,40 @@ check_task() {
     done
     # An Intent that names a file which is not there is worse than a missing
     # one: it reads as satisfied and the runner refuses it anyway.
+    #
+    # But "not there yet" is not "not there". A plan legitimately cites a file an
+    # earlier task creates, or one a prerequisite plan creates — measured on this
+    # repository's own plans, where AGENTS.md and tests/conformance.sh both
+    # failed a naive existence check while being perfectly correct. Existence is
+    # therefore checked against the repository PLUS everything CREATED contains.
     _intent=$(printf '%s\n' "$BUF" | sed -n 's/^.*\*\*Intent:\*\*//p')
     for _p in $_intent; do
         case "$_p" in
             —|-|*[!a-zA-Z0-9._/-]*) continue ;;
         esac
-        if [ ! -e "$ROOT/$_p" ]; then
-            printf '%s: Intent names a file that does not exist: %s\n' "$TASK" "$_p"
-            PROBLEMS=$((PROBLEMS + 1))
-        fi
+        [ -e "$ROOT/$_p" ] && continue
+        case "$CREATED" in
+            *" $_p "*) continue ;;
+        esac
+        printf '%s: Intent names a file that does not exist and no task creates: %s\n' "$TASK" "$_p"
+        PROBLEMS=$((PROBLEMS + 1))
     done
 }
+
+# Every path any task in this plan, or any plan named as a prerequisite, says it
+# will create. Collected before the per-task pass, because a task may cite a file
+# a LATER task creates when the dependency runs the other way.
+collect_created() {
+    for _f in "$PLAN" $(sed -n 's/^> \*\*Prerequisite:\*\* *//p' "$PLAN" | tr ',' ' '); do
+        [ -f "$_f" ] || [ -f "$ROOT/$_f" ] || continue
+        [ -f "$_f" ] || _f="$ROOT/$_f"
+        # "- Create: `a`, `b`" and "| `path` | ... |" in a Files created table.
+        CREATED="$CREATED $(sed -n 's/^- Create: *//p;s/^| `\([^`]*\)` |.*/\1/p' "$_f" \
+            | tr ',' ' ' | tr -d '`' | tr '\n' ' ') "
+    done
+}
+
+collect_created
 
 TASK=""
 BUF=""
@@ -741,7 +795,7 @@ chmod +x skills/autopilot-planning/validate-plan.sh
 sh tests/test_plan_format.sh
 ```
 
-Expected: `14 run, 0 failed`. The last assertion runs the validator against this plan — the hardest
+Expected: `16 run, 0 failed`. The last assertion runs the validator against this plan — the hardest
 real input that exists, because it is the plan that embeds the validator's own test.
 
 - [ ] **Step 5: Run shellcheck**
@@ -796,6 +850,13 @@ Replace the table under `## Work breakdown` with:
 Every task carries a goal in its heading and six fields. Each field has exactly one consumer, and
 `skills/autopilot-planning/validate-plan.sh` checks that all six are present before the plan is
 sharded.
+
+A plan that depends on another declares it in the header, so the validator knows which paths are
+merely not created yet:
+
+```
+> **Prerequisite:** docs/plans/YYYY-MM-DD-<earlier>.md
+```
 
 ### Task 1: <goal, imperative>
 - **Done when:** <the observable condition that makes this true>

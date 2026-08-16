@@ -1114,7 +1114,8 @@ that are under test here."
 - **Done when:** `skills/autopilot-planning/SKILL.md` exists with valid frontmatter and describes all
   nine phases, both hard gates, the no-idea branch of phase 0, the four sub-steps of phase 3
   including prior-art research and the committed PoC, the fresh-sub-agent reviews at phases 4 and 7b
-  with their three brief rules, and the rule that it commits nothing.
+  with their three brief rules, the three dispositions and the one-re-review bound at 7c and 7d, and
+  the rule that it commits nothing.
 - **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 9
 - **Intent:** `docs/design/2026-08-16-multi-harness-role-pipeline-design.md`
 - **Depends on:** Task 5
@@ -1177,8 +1178,10 @@ Say so plainly when stopping: which files were written, and that committing them
 4  ▮ TWO-LENS REVIEW     fresh sub-agent PER LENS — product, then engineering
 5  Documentation set     AGENTS.md + pointers · the docs/ tree · sync table · status table
 6  Plan                  docs/plans/YYYY-MM-DD-<topic>.md, structured work breakdown
-7  Check                 7a mechanical here -> 7b fresh sub-agent on design + plan
-8  ▮ STOP                the operator reads, approves, and commits
+7  Check                 7a mechanical here -> 7b fresh sub-agent -> 7c triage every
+                        finding -> 7d at most ONE re-review, then stop
+8  ▮ STOP                what was written · what review found · what is unproven ·
+                        the operator reads, approves, and commits
 ```
 
 ## Phase 0 — identify the work, then classify it
@@ -1458,14 +1461,80 @@ rather than skipping quietly: *"one task, mechanical checks clean, no outside re
 operator can always ask for it. On the architectural path it is never skipped — a design large
 enough to need its own document is large enough to be wrong in a way its author cannot see.
 
+### 7c — what happens to a finding
+
+This step governs the findings from **phase 4 as well as 7b**. Getting it wrong wastes both reviews,
+and it fails in two symmetric directions:
+
+- **Performative agreement** — accept everything, rewrite to match, and ship something worse,
+  because the reviewer had less context *by design* and was never meant to be right about
+  everything.
+- **Defensive dismissal** — explain why each finding is mistaken. The writer can always do this;
+  they hold all the context. The review then cost real money and changed nothing.
+
+The discipline is the one `superpowers:receiving-code-review` states: technical rigour, neither
+performative agreement nor blind implementation. Concretely, **every finding gets exactly one of
+three dispositions, and each carries an obligation**:
+
+| Disposition | What it requires |
+|---|---|
+| **Accepted** | The change, made. And if it touches an assumption a PoC settled, **that PoC is re-run**, not reasoned about |
+| **Rejected** | **Evidence, not argument** — a file, a measured output, or the line in the design the reviewer missed. "The reviewer lacked context" is not evidence; if the context was missing, the design failed to state it, and that is itself a finding |
+| **Undecided** | Handed to the operator as an open question, and the design's *Still unverified* gains a row |
+
+The asymmetry is deliberate: **a rejection needs evidence, an acceptance needs a re-run.** Both
+directions cost something, so neither is the lazy default.
+
+### 7d — at most one re-review, then stop
+
+If accepted findings changed the design or the plan materially, run the affected review **once more**
+with a fresh agent, scoped to what changed.
+
+**One extra round, never a loop.** If a second round still returns material findings, that is not a
+document to keep polishing — it is a signal the design is not ready, and the right move is to say so
+to the operator rather than iterate toward a document nobody has read from outside in three rounds.
+This is the same bound, and the same reason, as `max_rounds` in the runtime pipeline.
+
+Write the ledger to `docs/design/YYYY-MM-DD-<topic>-review.md`:
+
+```markdown
+| # | Lens | Finding | Disposition | Evidence or change |
+|---|---|---|---|---|
+| 1 | engineering | … | Accepted | commit-less edit to §…; poc/…/probe.sh re-run, still green |
+| 2 | product | … | Rejected | `docs/reference/…md:41` already measures this |
+| 3 | 7b | … | Undecided | added to *Still unverified* |
+```
+
+This file is what makes the review auditable instead of theatre. A review whose findings were all
+rejected, with no evidence recorded, did not happen.
+
 ## Phase 8 — stop
 
-State what was written, that nothing was committed, and that committing is the approval:
+State four things, in this order, and then stop.
 
-> Written: `docs/design/…`, `docs/plans/…`, `AGENTS.md`. Nothing is committed — committing them is
-> the approval, and `autopilot-deliver` checks for it before it will shard anything.
+**1. What was written.** Every path, including the PoCs and the review ledger.
+
+**2. What an outside voice found, and what was done about it.** Not "reviewed, all good" — the
+counts and the disagreements, because those are what the operator is actually being asked to
+approve:
+
+> Two lenses and one plan review: 9 findings. 6 accepted and applied, 2 rejected with evidence
+> (ledger rows 3 and 7), 1 undecided and now in *Still unverified*.
+
+**3. What is still unproven.** Read the design's *Still unverified* section out loud. An operator
+approving a design is approving its open questions too, and those are the easiest thing in a long
+document to approve by not noticing.
+
+**4. That nothing was committed, and that committing is the approval:**
+
+> Nothing is committed. Committing these files is the approval, and `autopilot-deliver` checks for
+> it mechanically before it will shard anything.
 
 Then stop. Do not offer to commit. Do not invoke `autopilot-deliver`.
+
+**If a finding was rejected, say which and on what evidence.** A rejection the operator never saw is
+a decision the skill made on its own, and §2.4 does not stop applying because a person is in the
+room.
 ```
 
 - [ ] **Step 2: Verify the frontmatter and structure**
@@ -1477,12 +1546,14 @@ grep -c 'none given\|no particular idea' skills/autopilot-planning/SKILL.md
 grep -c '^### 3[a-d]' skills/autopilot-planning/SKILL.md
 grep -c 'docs/design/poc/' skills/autopilot-planning/SKILL.md
 grep -c 'sub-agent' skills/autopilot-planning/SKILL.md
+grep -c 'Accepted\|Rejected\|Undecided' skills/autopilot-planning/SKILL.md
 ```
 
 Expected: the first four lines show `---`, `name: autopilot-planning`, a `description:` line, `---`;
 then `9`, one per phase; then at least `1`, proving the no-idea branch of phase 0 survived; then `4`,
 the sub-steps of phase 3; then at least `1`, proving the PoC location survived; then at least `3`,
-proving the outside-voice reviews at phases 4 and 7b survived.
+proving the outside-voice reviews at phases 4 and 7b survived; then at least `3`, proving the triage
+dispositions at 7c survived — a review with no disposition rule is a review whose findings evaporate.
 
 The last three assertions exist because those are the parts most likely to be quietly dropped while
 writing. The no-idea branch reads like an edge case and is the entry point for every morning the

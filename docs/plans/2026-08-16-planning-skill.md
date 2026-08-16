@@ -1006,6 +1006,28 @@ file. Do not copy rules into them.
 
 What is true today, what is missing, and why that costs something. Cite files and measurements.
 
+## Prior art
+
+What was found by searching before designing, with URLs. Three parts, all required:
+
+- **Adopted** — standards, patterns, or measurements taken from elsewhere, named rather than
+  re-described as though original.
+- **Refused** — attractive ideas examined and rejected, each with its reason. An idea rejected
+  without a recorded reason gets adopted later by someone who does not know it was considered.
+- **Corroborating or contradicting** — independent work that reached the same conclusion from a
+  different direction, or reached a different one. A contradiction is answered here, not omitted.
+
+## What was proven before this was written
+
+Every uncertainty named in phase 3b, and how it was settled. Link the probe and its recorded output
+under `docs/design/poc/`.
+
+| Claim | How it was settled | Result |
+|---|---|---|
+| | measured `<date>` · cited `<url>` · **unproven** | |
+
+A design may contain an unproven claim. It may never contain an unmarked one.
+
 ## Decisions taken
 
 | # | Decision | Consequence |
@@ -1090,7 +1112,8 @@ that are under test here."
 ### Task 6: The `autopilot-planning` skill
 
 - **Done when:** `skills/autopilot-planning/SKILL.md` exists with valid frontmatter and describes all
-  nine phases, both hard gates, the no-idea branch of phase 0, and the rule that it commits nothing.
+  nine phases, both hard gates, the no-idea branch of phase 0, the four sub-steps of phase 3
+  including prior-art research and the committed PoC, and the rule that it commits nothing.
 - **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 9
 - **Intent:** `docs/design/2026-08-16-multi-harness-role-pipeline-design.md`
 - **Depends on:** Task 5
@@ -1148,7 +1171,8 @@ Say so plainly when stopping: which files were written, and that committing them
    then classify         spike | bounded | architectural
 1  Survey                new repository → scaffold;  existing → read what is there
 2  Brainstorm            one question at a time, 2–3 approaches with a recommendation
-3  Design                docs/design/YYYY-MM-DD-<topic>-design.md
+3  Design                3a research prior art -> 3b name uncertainties ->
+                        3c prove them with a committed PoC -> 3d only then draft
 4  ▮ TWO-LENS REVIEW     the product lens, then the engineering lens
 5  Documentation set     AGENTS.md + pointers · the docs/ tree · sync table · status table
 6  Plan                  docs/plans/YYYY-MM-DD-<topic>.md, structured work breakdown
@@ -1216,10 +1240,101 @@ count as success before proposing anything.
 Then propose two or three approaches with trade-offs, lead with a recommendation, and say why.
 YAGNI ruthlessly.
 
-## Phase 3 — the design
+## Phase 3 — the design, and nothing uncertain enters it unproven
+
+The most expensive mistake available here is a design that reads well and rests on a technical claim
+nobody checked. It gets approved, sharded into issues, and discovered at 3 a.m. by a runner that
+cannot ask.
+
+So phase 3 has four steps, and drafting is the last of them.
+
+### 3a — find out how this has already been solved
+
+**Do this first, before naming a single uncertainty of your own.** Search the web for the class of
+problem, not just for the API you happen to be reaching for. Almost nothing here is new, and the
+cost of not looking is not embarrassment — it is spending a week rediscovering a failure mode
+somebody documented years ago, and building a worse version of a thing that has a name.
+
+Search for, at minimum:
+
+| Look for | Because |
+|---|---|
+| Established standards for this kind of artifact | Adopting one beats inventing a fourth, and it gives every later reader a name to look up |
+| How comparable systems solve it, and what they measured | Numbers from someone who ran it beat reasoning from someone who did not |
+| Known failure modes and post-mortems | The cheapest lesson is the one already paid for |
+| Recent changes — changelogs, deprecations, issue trackers | An answer that was right two years ago is a trap now |
+
+**Bring back three things, and put all three in the design:**
+
+1. **What to adopt**, named and cited with a URL — never re-described as though it were original.
+2. **What to refuse, and why.** An attractive idea rejected without a recorded reason gets adopted
+   later by someone who does not know it was considered. This is as load-bearing as the adoptions.
+3. **What corroborates or contradicts the design's own reasoning.** Independent agreement reached
+   from a different direction is the strongest evidence available at this stage; a contradiction is
+   more valuable still, and must be answered rather than omitted.
+
+This step is not optional and is not a formality. In the design that produced this plan it supplied
+the entire documentation convention, the review-lens pattern, an eight-fold cost measurement that
+reframed the architecture, and three ideas that were examined and deliberately refused.
+
+### 3b — name the uncertainties out loud
+
+Now list every technical claim the design will rest on that you do not *know* to be true. Being
+explicit is the whole point: **an uncertainty nobody named is one nobody proved.**
+
+Typical shapes: does this CLI accept that flag · what does it return when it fails · does this
+endpoint exist · does the algorithm handle the nested case · will this survive a restart · is that
+number still true.
+
+Search again for each, this time narrowly: the documentation, the changelog, the issue tracker.
+Cite what you find with URLs so the next reader can check it.
+
+**Documentation is a lead, never a verdict.** When a claim can be measured, measure it — measuring
+beat reading twice while this design was written. `pi auth check` exits 0 even for a provider with
+no credentials, so reading the exit status reports it ready; and `opencode` was documented as
+working while every command on this machine failed on an invalid config. No manual says either.
+
+### 3c — prove what is left with a PoC
+
+For every uncertainty that survives 3b, write **the smallest script that fails if the assumption is
+wrong**, run it, and read the output. Not a demonstration that it works — a test that would catch it
+not working.
+
+```
+docs/design/poc/YYYY-MM-DD-<topic>/
+├── <name>.sh          the probe, re-runnable by anyone
+└── RESULT.md          the command, the real output, the date, and what it settled
+```
+
+The scripts are **committed, not thrown away**. A proof someone can re-run next year is worth much
+more than a sentence claiming it was run once. When a dependency upgrades, the probe is how you find
+out what changed.
+
+**Record failures too, and record them first.** A PoC that fails is the more valuable result: it
+changes the design while changing it is still free. A PoC that succeeds records *how* — the exact
+command and the real output — because "it works" without the method is not reproducible and is
+therefore not evidence.
+
+Where the finding is about an external tool's behaviour, it also goes into
+`docs/reference/observed-behaviour.md` with its date. That file already carries that obligation and
+is the highest-priority document in most projects using this convention.
+
+### 3d — then draft
 
 Write it to `docs/design/YYYY-MM-DD-<topic>-design.md` from `templates/design.md.tmpl`. Present it
-in sections scaled to their complexity and ask after each whether it holds.
+in sections scaled to their complexity, and ask after each whether it holds.
+
+Every claim in the finished design is now one of three things, and **which one must be visible**:
+
+| Kind | How it appears |
+|---|---|
+| Measured | Stated with the date it was measured and, where it matters, the real output |
+| Cited | Stated with the URL, and marked as read rather than run |
+| Neither | Listed in *Still unverified* — never buried in a paragraph as though settled |
+
+**A design may contain an unproven claim. It may never contain an unmarked one.** The section that
+carries them moves to `docs/product/open-items.md` when the design is approved, so nothing quietly
+becomes true by being old.
 
 Record every operator decision in the *Decisions taken* table with its date. A decision that is not
 written down gets relitigated.
@@ -1303,12 +1418,18 @@ Then stop. Do not offer to commit. Do not invoke `autopilot-deliver`.
 head -4 skills/autopilot-planning/SKILL.md
 grep -c '^## Phase' skills/autopilot-planning/SKILL.md
 grep -c 'none given\|no particular idea' skills/autopilot-planning/SKILL.md
+grep -c '^### 3[a-d]' skills/autopilot-planning/SKILL.md
+grep -c 'docs/design/poc/' skills/autopilot-planning/SKILL.md
 ```
 
 Expected: the first four lines show `---`, `name: autopilot-planning`, a `description:` line, `---`;
-then `9`, one per phase; then at least `1`, proving the no-idea branch of phase 0 survived the
-writing. That branch is the one most likely to be dropped as an edge case, and it is the entry point
-for every morning the operator has time and no particular plan.
+then `9`, one per phase; then at least `1`, proving the no-idea branch of phase 0 survived; then `4`,
+the sub-steps of phase 3; then at least `1`, proving the PoC location survived.
+
+The last three assertions exist because those are the parts most likely to be quietly dropped while
+writing. The no-idea branch reads like an edge case and is the entry point for every morning the
+operator has time and no particular plan. Research and PoC read like ceremony and are the two steps
+that stop an unchecked claim reaching a runner that cannot ask.
 
 - [ ] **Step 3: Commit**
 

@@ -1113,7 +1113,8 @@ that are under test here."
 
 - **Done when:** `skills/autopilot-planning/SKILL.md` exists with valid frontmatter and describes all
   nine phases, both hard gates, the no-idea branch of phase 0, the four sub-steps of phase 3
-  including prior-art research and the committed PoC, and the rule that it commits nothing.
+  including prior-art research and the committed PoC, the fresh-sub-agent reviews at phases 4 and 7b
+  with their three brief rules, and the rule that it commits nothing.
 - **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 9
 - **Intent:** `docs/design/2026-08-16-multi-harness-role-pipeline-design.md`
 - **Depends on:** Task 5
@@ -1173,10 +1174,10 @@ Say so plainly when stopping: which files were written, and that committing them
 2  Brainstorm            one question at a time, 2–3 approaches with a recommendation
 3  Design                3a research prior art -> 3b name uncertainties ->
                         3c prove them with a committed PoC -> 3d only then draft
-4  ▮ TWO-LENS REVIEW     the product lens, then the engineering lens
+4  ▮ TWO-LENS REVIEW     fresh sub-agent PER LENS — product, then engineering
 5  Documentation set     AGENTS.md + pointers · the docs/ tree · sync table · status table
 6  Plan                  docs/plans/YYYY-MM-DD-<topic>.md, structured work breakdown
-7  Self-review           validate-plan.sh, plus placeholders and contradictions
+7  Check                 7a mechanical here -> 7b fresh sub-agent on design + plan
 8  ▮ STOP                the operator reads, approves, and commits
 ```
 
@@ -1339,9 +1340,15 @@ becomes true by being old.
 Record every operator decision in the *Decisions taken* table with its date. A decision that is not
 written down gets relitigated.
 
-## Phase 4 — the two-lens review
+## Phase 4 — the two-lens review, by an outside voice
 
-Before the design is approved, read it twice, deliberately, as two different people:
+Before the design is approved it is read by **fresh sub-agents, one per lens** — not re-read by the
+session that wrote it.
+
+This is the same argument the design itself makes about the tester: by the time a design is
+finished, the writer's context holds every assumption that produced it, so a self-review reads the
+design from inside the reasoning it is supposed to question. Re-reading with a different heading
+does not fix that. **A different context does.**
 
 **The product lens.** Is this the problem worth solving, as the user meets it? What is the deeper
 opportunity the current framing misses? What would make this unnecessary?
@@ -1349,8 +1356,28 @@ opportunity the current framing misses? What would make this unnecessary?
 **The engineering lens.** Architecture, data flow, state transitions, and the edge cases. Where does
 this fail under concurrency, partial failure, or a restart? What is asserted rather than checked?
 
-Report what each lens found, including finding nothing. A review that always approves is not a
-review.
+### How the brief is written, and this part is easy to get wrong
+
+Three rules, and each exists because breaking it silently destroys the independence being paid for:
+
+1. **Name paths; never paste excerpts.** The agent reads the design, the project's `AGENTS.md`, and
+   the documents the design cites, itself. A pasted excerpt is stale the moment the file changes,
+   and it is the agent's own read that puts the material where its attention can reach it.
+2. **Never hand over the conversation.** No transcript, no summary of what was decided and why. That
+   transcript is precisely the anchoring the fresh context exists to escape — passing it on buys
+   the cost of a sub-agent and none of the benefit.
+3. **State the question, never the expected answer.** "Check the design handles a restart" is a
+   question. "Confirm the design handles a restart correctly" is an instruction to agree, and it
+   will be obeyed.
+
+### What comes back
+
+Each lens reports what it found, **including finding nothing** — a review that always approves is
+not a review, and a lens that reports nothing twice in a row is a lens worth replacing.
+
+Findings go **to the operator**, not into the design automatically. The skill may not decide that a
+reviewer is wrong, and it may not quietly adopt a finding either: both are decisions, and phase 8
+belongs to a person.
 
 ## Phase 5 — the documentation set
 
@@ -1387,20 +1414,49 @@ is a plan failure.
 **Mark a task `Needs human: yes`** when its correctness depends on behaviour a person has to
 observe. The runner will implement it, verify it, and leave the issue open.
 
-## Phase 7 — self-review
+## Phase 7 — mechanical check, then a second outside voice
+
+Two passes, in this order, because the cheap one must never be paid for by the dear one.
+
+### 7a — the mechanical pass, run by this session
 
 ```sh
 sh <skill-dir>/validate-plan.sh docs/plans/<the-plan>.md <project-root>
 ```
 
-Exit 0 and no output, or fix what it names. Then read the plan once more for:
+Exit 0 and no output, or fix what it names. Then read for what a script cannot see:
 
 - placeholders — `TBD`, `TODO`, "add error handling", "similar to Task N"
-- contradictions between tasks, and names that drift (`clearLayers` in one task, `clearFullLayers`
-  in another)
-- a spec requirement with no task implementing it
+- names that drift between tasks — `clearLayers` in one, `clearFullLayers` in another
+- a step that says *what* to do without showing *how*
 
-Fix inline. Do not re-review.
+Fix inline. This pass is cheap and catches the mechanical faults, so it runs first — sending them to
+a sub-agent is paying a reviewer to find a typo.
+
+### 7b — the outside voice, on the design and the plan together
+
+A fresh sub-agent, given the paths to **the design, the plan, and the project's rules**, reading all
+three itself. The same three brief rules as phase 4 apply unchanged, and the third matters most
+here: the plan is long, and a brief that summarises it is handing over the anchoring again.
+
+It answers questions this session structurally cannot:
+
+| Question | Why the writer cannot answer it |
+|---|---|
+| Does the plan actually implement the design? Which section has no task? | The writer knows what they *meant* each task to cover, and reads that intent back into the text |
+| Could an engineer with no context execute this task as written? | The writer has all the context. Everything looks sufficient from there |
+| Is anything presented as settled that was never proven? | A claim the writer believes reads like a fact to the writer |
+| What is missing entirely? | The hardest one, and unreachable from inside the plan's own frame |
+
+**Findings go to the operator, unchanged.** The skill does not adjudicate them — deciding a reviewer
+is wrong is a decision, and decisions belong to phase 8.
+
+### When 7b may be skipped
+
+On the **bounded** path, when the plan is one to three tasks and 7a found nothing. Say so out loud
+rather than skipping quietly: *"one task, mechanical checks clean, no outside review run."* The
+operator can always ask for it. On the architectural path it is never skipped — a design large
+enough to need its own document is large enough to be wrong in a way its author cannot see.
 
 ## Phase 8 — stop
 
@@ -1420,11 +1476,13 @@ grep -c '^## Phase' skills/autopilot-planning/SKILL.md
 grep -c 'none given\|no particular idea' skills/autopilot-planning/SKILL.md
 grep -c '^### 3[a-d]' skills/autopilot-planning/SKILL.md
 grep -c 'docs/design/poc/' skills/autopilot-planning/SKILL.md
+grep -c 'sub-agent' skills/autopilot-planning/SKILL.md
 ```
 
 Expected: the first four lines show `---`, `name: autopilot-planning`, a `description:` line, `---`;
 then `9`, one per phase; then at least `1`, proving the no-idea branch of phase 0 survived; then `4`,
-the sub-steps of phase 3; then at least `1`, proving the PoC location survived.
+the sub-steps of phase 3; then at least `1`, proving the PoC location survived; then at least `3`,
+proving the outside-voice reviews at phases 4 and 7b survived.
 
 The last three assertions exist because those are the parts most likely to be quietly dropped while
 writing. The no-idea branch reads like an edge case and is the entry point for every morning the

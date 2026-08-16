@@ -1,6 +1,6 @@
 # The skill layer — design
 
-> **Type:** Design · **Date:** 2026-08-15 · **Status:** Awaiting review
+> **Type:** Design · **Date:** 2026-08-15 · **Status:** Approved
 > **Scope:** How an approved plan reaches the unattended loop, and how the loop's output reaches the
 > operator. Covers two new skills, the plugin distribution model, and the shell changes they need.
 

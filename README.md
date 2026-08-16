@@ -168,6 +168,12 @@ everything reporting on it said otherwise*.
 come back, rest on the argument in
 [ADR-0004](docs/decisions/0004-job-files-live-on-the-internal-disk.md) rather than on evidence.
 
+**Still unverified: intent binding end to end.** The `Intent:` pointer's containment and refusal
+paths carry unit tests, and the full suite passes. What has not been run is one real issue with a
+valid `Intent:` line taken through a throwaway repository against the real agent, confirming the
+transcript shows it read the plan file before writing code —
+[Intent-binding plan](docs/plans/2026-08-15-intent-binding.md), last verification step.
+
 ---
 
 ## Safety

@@ -1,6 +1,6 @@
 # Intent binding — every task names the plan it serves
 
-> **Type:** Plan · **Date:** 2026-08-15 · **Status:** Awaiting approval
+> **Type:** Plan · **Date:** 2026-08-15 · **Status:** Approved — implemented; the final end-to-end intent-binding verification remains open (see docs/reference/observed-behaviour.md)
 > **Scope:** Runner — queue, agent prompt, settlement. No change to guards, verify, or pacing.
 
 ## Context

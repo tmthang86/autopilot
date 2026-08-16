@@ -1,6 +1,6 @@
 # Skill layer implementation — deliver, review, and deployment
 
-> **Type:** Plan · **Date:** 2026-08-15 · **Status:** Awaiting approval
+> **Type:** Plan · **Date:** 2026-08-15 · **Status:** Done
 > **Scope:** Shell deployment step, the two operator skills, plugin packaging. No change to the loop's guards, verify, or pacing.
 
 ## Context

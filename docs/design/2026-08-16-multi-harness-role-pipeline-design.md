@@ -1,0 +1,461 @@
+# Multi-harness delivery with a role pipeline — design
+
+> **Type:** Design · **Date:** 2026-08-16 · **Status:** Approved
+> **Scope:** Five changes taken together: a harness abstraction, a project-defined tier ladder, a
+> three-role runtime pipeline, provider preflight in the deliver skill, and a run journal with a
+> separate dashboard. Includes the decision to rewrite the runner in Rust and what replaces Rule Zero.
+
+## Context
+
+The runner works. `tests/run.sh` reports `ALL PASS` across fifteen files, `shellcheck` is clean, and
+the loop has been exercised end to end against real repositories under launchd. What it does not do
+is vary: every task is implemented, tested, and reviewed by a single invocation of one hard-coded
+CLI, `claude`, at a model chosen by an issue label.
+
+A review conducted before this design also found five declared-but-unread configuration keys. They
+are listed below because three of them stop being cosmetic the moment this design lands.
+
+### What the review found
+
+| Key or behaviour | State | Why this design cannot defer it |
+|---|---|---|
+| `agent.turn_timeout_s` | declared in `templates/config.json`, read by nothing | A task becomes 3×N agent calls. A local model that hangs holds the lock forever, and `guard_lock` then blocks every later wake |
+| `pacing.max_attempts_per_issue` | declared, read by nothing | The pause-and-resume path below depends entirely on a per-issue attempt budget. `settle_failure` currently releases the claim with no counter, so only the global circuit breaker limits retries |
+| `autonomy.default` | declared, read by nothing | Only `prepare_only_label` is honoured; the "classes of task" §3 describes is one class |
+| cumulative spend ceiling | `CLAUDE.md` §3 names it; only per-invocation `agent.max_budget_usd` exists | One wake can now spend 3×N times what one call spends |
+| `ctl.sh status` | reports the label is known; does not read `launchctl print` runs/last-exit, and does not compare `VERSION` against the plugin | `observed-behaviour.md` names the first as *"the check that would catch it"* for the `EX_CONFIG` failure; the skill-layer design requires the second |
+
+Two things recorded as unverified on 2026-08-15 remain unverified: a reboot, and intent binding taken
+end to end against the real agent.
+
+## Decisions taken
+
+Each was an operator decision made on 2026-08-16, not an inference.
+
+| # | Decision | Consequence |
+|---|---|---|
+| 1 | Scope is all five: harness abstraction, tier ladder, role pipeline, preflight, journal + dashboard | One spec, one plan sequence. The five are not independently shippable — the pipeline needs the ladder, the ladder needs the abstraction |
+| 2 | The coordinator / planner / classifier is **the agent running the deliver skill**, not a runtime role | Escalation is a pause for a human-present session, not a fourth unattended agent. ADR-0005 and §2.4 survive unchanged |
+| 3 | Runtime is three roles: implement (T), test (T, clean context), review (T+1, blocking gate) | One task is at least three agent invocations |
+| 4 | A tester rejection goes to the reviewer, who **adjudicates and fixes**, then hands back to the tester | The higher tier is the one that repairs the lower tier's work |
+| 5 | The tester↔reviewer loop is capped at **2 rounds**; beyond that the task escalates to the coordinator and **pauses** | Pause must preserve work — see *The branch model* |
+| 6 | A reviewer that has already fixed code does **not** also gate that code; the tester's pass is the gate | Closes the self-approval hole opened by decision 4 |
+| 7 | Paused work lives on `autopilot/task-<n>`, pushed to the remote | Survives `git reset --hard`, survives losing the machine |
+| 8 | Provider configuration has two axes, **harness × model** | `ollama` and `lmstudio` are values of *model*, reached through a harness. They are not harnesses: they expose no tools and cannot edit a file, run a command, or commit |
+| 9 | The tier ladder is an **ordered array the project names itself**; `tier_offset` resolves "one step up" | No tier name is known to the runner. §3 portability holds |
+| 10 | Tier **names** are committed; tier **bindings** are machine-local and gitignored | A project cloned to a second machine re-runs preflight instead of fighting over a committed file |
+| 11 | `usage_limit` generalises to **`provider_unavailable`** | Covers a closed usage window, a dead local endpoint, and an expired token. All three back off without consuming the retry budget |
+| 12 | Role verdicts are written to **files**, never parsed from stdout | Harness-agnostic. A missing or malformed verdict is a `task_failure`, never a pass |
+| 13 | `verify` runs at **every loop boundary**, not only at the end | It costs no tokens, so it must never be the last thing to discover the build is broken |
+| 14 | The runner is **rewritten in Rust**, shelling out to `git` and `gh` exactly as today | Supersedes Rule Zero's "POSIX shell only". See *Why Rust* |
+| 15 | The rewrite is a **single cutover**; the shell runner is frozen as the reference specification | Two sources of truth are the thing §1 exists to prevent, so the overlap is bounded and ends |
+| 16 | The dashboard is **Go + htmx**, living outside the runner | Server-rendered fragments, htmx vendored as one embedded file, no build step beyond `go build` |
+
+## Why Rust, and what replaces Rule Zero
+
+Rule Zero states the constraint as *POSIX shell only*, but the reason it gives is different:
+**anything the operator must trust and cannot read is a liability**, and the codebase must be
+readable in one sitting. Shell was the means; auditability was the end.
+
+`docs/reference/observed-behaviour.md` is the argument for changing the means. Of the defects that
+survived 166 passing tests, most are shell semantics rather than logic:
+
+| Defect | Class |
+|---|---|
+| `x=$(false)` under `set -eu` kills the script even inside an `if` body — twice, at two levels of the call stack | shell semantics |
+| `jq`'s `//` treats `false` as absent — twice, in `state.sh` and `agent.sh` | weak typing across a process boundary |
+| Command substitution runs a subshell, discarding the queue cache | shell semantics |
+| `git reset --hard` with no argument rewinds to a `HEAD` that has already moved | not shell; a genuine logic defect |
+
+Three of those four classes are unrepresentable in Rust: `Result` must be handled, `Option<bool>`
+distinguishes `false` from absent, and no construct silently discards state on return. The fourth
+would have been caught by neither language.
+
+The design in this document — three roles, bounded rounds, five harness adapters, a journal, per-call
+timeouts, cumulative wake ceilings, and a branch lifecycle — is past the size where shell is the
+honest choice.
+
+**The constraint that replaces Rule Zero's first line:**
+
+| Old | New |
+|---|---|
+| POSIX shell only | Rust, with a dependency tree an operator can enumerate. `git` and `gh` remain child processes |
+| No runtime dependencies beyond `git`, `gh`, `jq`, and the agent CLI | Same list minus `jq` — parsing moves in-process. Nothing else is added |
+| No file in `runner/lib/` exceeds ~150 lines | No module exceeds ~200 lines |
+| No network calls except through `gh` and the agent CLI | Unchanged, and now checkable by grepping for HTTP crates rather than by reading every line |
+
+**Why `git` and `gh` stay as child processes.** Every rule in `observed-behaviour.md` is a finding
+about how those two programs *behave* — `gh` resolving the repository from the working directory,
+`gh label create` exiting non-zero for both a duplicate and an expired token, `gh issue list` exiting
+0 with `[]` for a label that does not exist. Those findings are about the CLI. Replacing it with
+`octocrab` discards every one of them and requires re-measuring the same ground on a different
+surface. `gh` also already solves keychain access under launchd, which is confirmed working
+(2026-08-15) and is exactly the kind of thing that fails quietly.
+
+## Architecture
+
+```
+autopilot/                       the plugin repository
+├── runner/                      Rust. Compiled to one binary, deployed to ~/.local/share/autopilot/
+│   ├── src/
+│   │   ├── main.rs              argument parsing, one task per invocation, then exit
+│   │   ├── config.rs            two-layer config load and validation
+│   │   ├── tier.rs              ladder resolution, tier_offset
+│   │   ├── queue.rs             gh: candidates, claim, release, labels, intent
+│   │   ├── guard.rs             lock, branch, quiet hours, daily cap, STOP, tiers
+│   │   ├── pipeline.rs          the three-role loop and its exit paths
+│   │   ├── verify.rs            the gate
+│   │   ├── settle.rs            git and gh writes; the only module that writes history
+│   │   ├── journal.rs           append-only JSONL
+│   │   └── harness/             ONE FILE PER HARNESS. No harness name appears outside here
+│   │       ├── mod.rs           the trait, and the default classifier
+│   │       ├── claude.rs  opencode.rs  pi.rs  codex.rs
+│   └── templates/               prompt templates, one per role
+├── skills/                      autopilot-deliver · autopilot-review   (unchanged in kind)
+└── dashboard/                   Go + htmx. Read-only. The runner never invokes it
+    ├── main.go                  journal reader, HTTP handlers, embedded assets
+    └── ui/                      templates + vendored htmx.min.js
+```
+
+### The boundary, restated and widened
+
+The skill-layer design established one sentence: **skills run when a person is present; shell runs
+when nobody is.** This design adds a second consumer and keeps the same shape:
+
+```
+runner  ──writes──▶  journal (.autopilot/runs/**/journal.jsonl)  ◀──reads──  dashboard
+```
+
+The runner knows nothing about the dashboard, and the dashboard never writes. Both halves are
+grep-checkable, and both become tests:
+
+```
+runner: no reference to  skills/  or  dashboard/       (permanently empty)
+outside runner/src/harness/: no occurrence of  claude | opencode | pi | codex
+```
+
+### The harness adapter contract
+
+A harness is an agentic CLI: it has tools, it can read and edit files, run commands, and commit. A
+model server is not a harness. Each adapter implements one trait, and nothing else in the codebase
+knows a harness exists.
+
+| Method | Returns | Called by |
+|---|---|---|
+| `available()` | binary present **and** authenticated | preflight (deliver) and `guard_tiers` (every wake) |
+| `models()` | model identifiers actually reachable | preflight, to verify a named model exists |
+| `run(prompt, cwd, log, params)` | spawns it, prompt on **stdin**, honouring `turn_timeout_s` | the pipeline |
+| `probe()` | one trivial call — is the provider reachable at all? | classification |
+| `classify(log, status)` | `Ok` \| `TaskFailure` \| `ProviderUnavailable` | the pipeline |
+
+`classify` has a **shared default** in `harness/mod.rs`: exit status 0 is `Ok`; otherwise `probe()`
+decides between `TaskFailure` and `ProviderUnavailable`. Only `claude.rs` overrides it, to keep the
+two refinements that were paid for in `observed-behaviour.md` §4 and §5 — that only the final
+`type:result` event decides, and that `is_error` must be compared against `false` explicitly rather
+than defaulted. A new adapter is therefore correct from its first line and merely less precise.
+
+**The prompt always goes in on stdin.** This is not a Claude-specific workaround; a task description
+is arbitrary text that may begin with a dash, and stdin is immune to that and to flag ordering for
+every harness.
+
+### Measured harness behaviour, 2026-08-16
+
+Recorded here because `CLAUDE.md` §4 forbids inventing an output shape. Everything in the *measured*
+rows was run directly on the operator's machine on 2026-08-16.
+
+| | claude | pi | opencode | codex |
+|---|---|---|---|---|
+| Spawn | `-p --output-format stream-json --verbose --model M --effort E --max-budget-usd N`, prompt on stdin | `-p --mode json --provider P --model M --thinking L` | `run --format json -m provider/model --variant V --auto` | not installed |
+| List models | — | `--list-models` | `models [provider] --verbose` | — |
+| Auth check | `--version` plus probe | `auth check --provider P --json` | `providers`; errors out if config invalid | — |
+| Skip permissions | `--dangerously-skip-permissions` | `--tools` / `--exclude-tools` | `--auto` | — |
+| Cost | **measured:** `total_cost_usd` and `modelUsage[model].costUSD` on the final `result` event | **not measured** | `stats --days N`, `export <session>`; **not measured** | — |
+
+**Two traps measured directly, and one machine-state finding:**
+
+1. **`pi auth check` exits 0 regardless of readiness.** Status is in the JSON, not the exit code:
+   ```
+   {"status":"not_ready","provider":"anthropic","reason":"credentials_not_configured"}
+   {"status":"ready","provider":"deepseek","authType":"api_key"}
+   {"status":"not_ready","provider":"ollama","reason":"provider_not_found"}
+   ```
+   Reading the exit status reports a provider with no credentials as ready — the exact failure shape
+   this repository has now paid for seven times. It also confirms **`pi` does not support `ollama` or
+   `lmstudio` natively**; both answer `provider_not_found`, while nine hosted providers answer
+   `credentials_not_configured`.
+
+2. **`opencode models` lists what is *reachable*, not a catalogue.** Good for preflight, but it is
+   silent about providers that are merely unconfigured.
+
+3. **On this machine, only `claude` is currently usable.** `opencode` fails every command because
+   `~/.config/opencode/config.json` is invalid (`mcp.gitnexus` is missing the `enabled` key); `pi`
+   has credentials for `deepseek` only; the LM Studio server is off and `lms ls` times out waiting
+   for its daemon; `ollama` and `codex` are not installed. The design must tolerate this, and the
+   plan must not claim support for an adapter that has never been run.
+
+**Adapter order, and what "supported" means.** `claude` first (it exists), then `opencode` (it
+unlocks both local models and its free gateway models), then `pi` (deepseek plus nine hosted
+providers), then `codex` when it is installed. An adapter that has never executed against its real
+CLI ships as *unproven* and is named as such in the guide — a recorded fixture that was never
+observed is an invented JSON shape by another name.
+
+### The tier ladder, in two layers
+
+Layer 1, `.autopilot/config.json` — committed, the project's contract:
+
+```json
+{
+  "tiers":    ["light", "standard", "deep"],
+  "roles":    { "context_docs": ["docs/plans/2026-08-16-overall.md", "CLAUDE.md"],
+                "implement": {"tier_offset": 0},
+                "test":      {"tier_offset": 0},
+                "review":    {"tier_offset": 1} },
+  "pipeline": { "max_rounds": 2, "turn_timeout_s": 2700,
+                "wake_timeout_s": 10800, "wake_budget_usd": 25.0 },
+  "agent":    { "permission_mode": "bypassPermissions", "default_tier": "standard" },
+  "queue":    { "tier_label_prefix": "tier:", "...": "unchanged" }
+}
+```
+
+Layer 2, `.autopilot/tiers.local.json` — gitignored, this machine's bindings:
+
+```json
+{ "light":    {"harness": "opencode", "model": "opencode/nemotron-3.5-lightning-free", "effort": "low",  "budget_usd": 0},
+  "standard": {"harness": "claude",   "model": "sonnet", "effort": "low",  "budget_usd": 5.0},
+  "deep":     {"harness": "claude",   "model": "opus",   "effort": "high", "budget_usd": 15.0} }
+```
+
+`tier_offset: 1` applied to the top tier resolves to itself: the ladder has a ceiling and does not
+overflow. Config load fails, loudly and by name, if any tier in layer 1 has no binding in layer 2 —
+a configuration error, not a task failure.
+
+`agent.default_model`, `agent.default_effort`, and `agent.max_budget_usd` are removed, and the
+`model:` / `effort:` labels are replaced by `tier:<name>`. An old config therefore fails to load
+rather than running with silently wrong parameters. Migration is the deliver skill's job.
+
+### The role pipeline
+
+```
+guard_all + guard_tiers        every tier in the ladder must be available()
+                               otherwise ProviderUnavailable → back off, no retry consumed
+
+pick issue → resolve intent → resolve tier T (label tier:<name>, else default_tier)
+git checkout -B autopilot/task-<n> autopilot/main
+START_SHA = HEAD ;  claim
+
+implement(T) ── ProviderUnavailable → release, back off, exit 0
+             └─ TaskFailure         → reset, comment, attempt++, exit 0
+
+round = 0
+┌─▶ verify()                    costs no tokens. Red counts as a tester rejection
+│     green → test(T, clean session) → verdict file
+│                 pass   → leave the loop
+│                 reject → fall through
+│   round++ ;  round > max_rounds → PAUSE
+│   review(T+1): adjudicate and fix → verdict file
+└───────────────────────────────────┘
+
+reviewer has not yet intervened?  → review(T+1) as the final gate → reject → PAUSE
+reviewer has already intervened?  → the tester's pass is the gate (decision 6)
+
+verify()   ← final, unconditional. §2.1 has no bypass
+   red   → reset to START_SHA, comment, attempt++
+   green → merge --ff-only into autopilot/main → push → close issue → delete task branch
+```
+
+**When the attempt budget runs out.** `attempt++` is bounded by `pacing.max_attempts_per_issue`,
+which nothing currently reads. On the attempt that exhausts it, the task does not simply fail again:
+it takes the same PAUSE path as a rounds-exhausted task — the work stays on its branch, the issue is
+labelled `blocked`, and the comment names every attempt and why each one ended. Only a coordinator
+brings it back. A task that can be retried forever is a task that burns a usage window nightly with
+nobody deciding anything.
+
+Each role is a **fresh invocation with no session resumption**. That is what "clean context" means
+for the tester, and it is free: it is the absence of `--continue` / `--resume`.
+
+Every role reads the same two sets of documents before touching code: the project-level documents
+named in `roles.context_docs` (committed — the overall plan), and the task-level `Intent:` line the
+coordinator wrote onto the issue. This extends ADR-0005 rather than replacing it.
+
+### Verdicts travel through the file system
+
+`pi --mode json`, `opencode run --format json`, and `claude --output-format stream-json` produce
+three different shapes. Parsing them for a pass/reject decision would mean a second `classify` per
+harness, forever. Instead each role writes:
+
+```
+.autopilot/runs/<issue>/round-<k>/{tester,reviewer}-verdict.json
+    { "verdict": "pass" | "reject", "reason": "…", "evidence": ["path:line", …] }
+```
+
+Every harness has a write tool, so this needs no adapter code at all. `.autopilot/` is already
+excluded from `git reset --hard` and `git clean`, so the record survives every rejection path — which
+is what makes a resumed round able to read the previous argument instead of repeating it.
+
+**A missing or malformed verdict is a `TaskFailure` and is never read as a pass.** A reviewer that
+died mid-run must not become an approval.
+
+### The branch model
+
+```
+main                       the runner never touches it (guard unchanged)
+└─ autopilot/main          accumulates verified work only
+   └─ autopilot/task-<n>   one branch per task; work in progress lives here
+```
+
+| Outcome | Action |
+|---|---|
+| verify green | `merge --ff-only` into `autopilot/main`, push, close, delete the task branch both sides |
+| **pause** | push the task branch, comment the full argument, label `blocked`, **no reset** |
+| failure with attempts remaining | reset to `START_SHA`, delete the task branch; the journal remains |
+
+This tightens something incidentally: the agent is now confined to a task branch, so
+`autopilot/main` is never dirtied by an agent directly. `_settle_guard_branch` changes from *"not
+main"* to *"exactly this issue's task branch"*, which is a stronger check than the one it replaces.
+
+### The journal
+
+Append-only JSONL at `.autopilot/runs/<issue>/journal.jsonl`, and the only interface the dashboard
+has:
+
+```jsonl
+{"ts":…,"wake":"w-…","event":"wake_start","issue":42,"tier":"standard"}
+{"ts":…,"wake":"w-…","event":"role_start","role":"implement","round":0,"harness":"claude","model":"sonnet"}
+{"ts":…,"wake":"w-…","event":"role_end","role":"implement","round":0,"classify":"ok","cost_usd":0.42,"duration_s":312}
+{"ts":…,"wake":"w-…","event":"verdict","role":"test","round":0,"verdict":"reject","reason":"…"}
+{"ts":…,"wake":"w-…","event":"verify","result":"red","failed":"unit"}
+{"ts":…,"wake":"w-…","event":"wake_end","outcome":"merged|failed|paused|stood_down"}
+```
+
+**A `role_start` with no matching `role_end` is a silent death**, and it is detectable with one
+query — no dashboard required. This is the mechanism that answers the failure the operator hit on
+2026-08-16, where sub-agents died and nothing reported it until they were asked about directly.
+
+`ctl.sh status` — becoming `autopilot status` — reads the journal for orphaned roles, and reads
+`launchctl print gui/$UID/<label>` for `runs` and `last exit code`, closing the gap
+`observed-behaviour.md` identified and never filled.
+
+**Cost honesty.** Cumulative USD per wake is only trustworthy where the harness reports it; it is
+measured for `claude`, unmeasured for `pi` and `opencode`, and zero for local models. The ceiling
+that is genuinely enforceable is therefore `wake_timeout_s`, which is harness-agnostic and always
+measurable. `wake_budget_usd` is best-effort and is documented as such rather than presented as a
+guarantee.
+
+## Preflight in `autopilot-deliver`
+
+Phase 2 (*Prepare the project*) gains tier resolution, and follows the rule already established there
+for `verify`: **detect, propose, the operator confirms, then write** — never decide silently.
+
+```
+for each harness adapter:  available()  → binary present? authenticated?
+                           models()     → which models are actually reachable
+                        ↓
+propose a ladder → operator edits and confirms
+                        ↓
+write  config.json                (tier names · roles · pipeline)     committed
+write  .autopilot/tiers.local.json (tier → harness/model/effort/$)    gitignored
+                        ↓
+re-check: every tier resolves → otherwise STOP, naming exactly what is missing
+```
+
+The ladder is re-detected on **every** deliver run, not written once and trusted. The runtime
+counterpart is `guard_tiers`, which runs inside `guard_all` on every wake: cheap, and it turns "LM
+Studio was switched off at 3 a.m." into `ProviderUnavailable` — a back-off that consumes no retry
+budget and fails no task.
+
+Phase 3 (*Shard*) changes only in what it writes onto each issue: `tier:<name>` in place of `model:`
+and `effort:`.
+
+## The dashboard
+
+Go, htmx, read-only, outside `runner/`, never invoked by the runner. It scans the installed projects
+already enumerated by `~/.local/share/autopilot/jobs/*.plist`, reads their journals, and serves:
+
+- wakes in flight, with the role currently running and how long it has been running
+- **orphaned roles** — a `role_start` with no `role_end`; the headline feature
+- accumulated cost and wall-clock per wake, per issue, per tier
+- tasks paused and waiting for a coordinator, with the argument that paused them
+- the circuit breaker, `STOP`, and `launchctl` runs / last exit code per project
+
+htmx is vendored as a single file and embedded with `go:embed`, so there is no build step beyond
+`go build` and no package manager in the loop. The source ships and is read; the binary is an
+artifact of it.
+
+## The invariants
+
+The four in `CLAUDE.md` §2 survive. Three are strengthened, one is generalised, and four more are
+added because this design creates the ways to break them.
+
+| # | Invariant | Change |
+|---|---|---|
+| 1 | Verification gates the commit | **Strengthened.** It now also runs at every loop boundary, and the final run before the merge is unconditional |
+| 2 | Usage exhaustion is not a task failure | **Generalised** to `ProviderUnavailable`: closed usage window, dead endpoint, or expired token. None consumes a retry |
+| 3 | State round-trips | **Widened** to the journal and to paused task branches. A paused task must be resumable from what is on disk and on the remote |
+| 4 | The runner executes intent, it never authors it | **Unchanged and reinforced.** The coordinator is human-present; escalation is a pause, not a fourth unattended agent |
+| 5 | A missing or malformed verdict is never a pass | New — the direct consequence of decision 12 |
+| 6 | The agent never works on `autopilot/main`, only on a task branch | New — the direct consequence of decision 7 |
+| 7 | No harness name appears outside `runner/src/harness/` | New — §3 portability, extended from projects to harnesses |
+| 8 | The runner never references a skill or the dashboard | New — the widened boundary |
+
+## Testing
+
+The discipline in `CLAUDE.md` §4 carries over intact, with the language changed:
+
+- Tests run against a **real throwaway git repository**. Git's behaviour is still the thing relied on.
+- `gh` and every agent CLI are stubbed with fixture programs on `PATH`. Output shapes are **recorded
+  from real runs**, never invented — which is why an unproven adapter ships labelled unproven.
+- Every invariant above carries a test that fails if the invariant is removed. Invariants 7 and 8 are
+  grep tests, as their shell predecessor already is.
+- `clippy` clean, `cargo fmt` clean, and `go vet` clean for the dashboard, before commit.
+
+Two classes need tests that did not exist before:
+
+- **Pipeline exit paths.** Every way a task can end must be exercised — guard stand-down, unavailable
+  provider, intent refusal, failed claim, implement failure, rounds exhausted, attempts exhausted,
+  final-review rejection, red verify, and success — including the pause-and-resume round trip and the
+  reviewer-already-intervened branch of decision 6.
+- **The shell runner as reference.** During the cutover the existing suite becomes a conformance
+  suite: the same fixture repositories, the same stubs, run against both binaries, compared. That is
+  what decision 15 buys, and it ends when the shell is deleted.
+
+Skills remain Markdown and remain untestable as units; they are verified end to end against a
+throwaway repository, as today.
+
+## Effect on existing documents
+
+- `CLAUDE.md` §1 — Rule Zero's *POSIX shell only* is replaced. The reason it gives is kept verbatim
+- `CLAUDE.md` §2 — four invariants become eight; two are amended
+- `CLAUDE.md` §3 — the five project-specific concerns become six, adding the tier ladder, and the
+  "no project name in `lib/`" rule extends to "no harness name outside `harness/`"
+- `CLAUDE.md` §4 — Rust and Go tooling replaces `shellcheck`
+- `docs/decisions/` — a new ADR supersedes Rule Zero's language constraint. ADR-0001, 0002, 0004, and
+  0005 are unaffected; ADR-0003 was already superseded
+- `docs/design/2026-08-15-skill-layer-design.md` — its boundary sentence survives; its architecture
+  diagram gains `dashboard/` and the runner becomes a compiled binary
+- `docs/reference/observed-behaviour.md` — gains the three harness measurements above, dated
+- `docs/guides/install.md` — gains tier configuration and the preflight; loses `jq` as a dependency
+
+## Out of scope
+
+- **Running roles in parallel.** The pipeline is sequential by construction: the tester reads what
+  the implementer wrote, and the reviewer adjudicates between them.
+- **More than one task per wake.** ADR-0001 stands; a task is simply larger now.
+- **A runtime coordinator.** Decision 2 places it with a person. An unattended agent that decides
+  whether to close or requeue a disputed task is exactly what §2.4 forbids.
+- **The dashboard writing anything.** It reads journals. Acting on what it shows is done through the
+  existing skills or by hand.
+- **Re-sharding after a plan changes.** Still a real problem, still a different one.
+- **Adapters for harnesses that cannot be run on the developing machine.** The contract accommodates
+  them; the plan does not claim them.
+
+## Still unverified
+
+Carried forward, and added to:
+
+- A reboot, and intent binding end to end against the real agent — both open since 2026-08-15
+- `pi --mode json` and `opencode run --format json` output shapes — never measured; measuring them is
+  a prerequisite step in the plan, and both require fixing this machine first (`opencode`'s invalid
+  config, `pi`'s missing credentials)
+- Whether `opencode` reaches `ollama` and `lmstudio` in practice — documented, unmeasured here,
+  and the only route to a local-model tier now that `pi` is confirmed not to support them
+- The throttled `rate_limit_event` payload — still only `{"status":"allowed"}` has ever been seen

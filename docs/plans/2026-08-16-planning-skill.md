@@ -67,11 +67,11 @@ Facts established before planning. No guesses in this section.
 - **The runner refuses a task with no `Intent:` line before spending a token.** `runner/run-once.sh:62-74`
   calls `queue_intent` before `queue_claim`, so the refusal costs no attempt and does not touch the
   circuit breaker. ADR-0005 records why.
-- **the companion project runs this documentation convention today.** Measured at
-  `a private repository` on 2026-08-16: `docs/` carries `product/`,
-  `architecture/`, `decisions/` (17 files), `reference/`, `guides/`, `explanation/`, `plans/`; its
-  `CLAUDE.md` is 301 lines and its §4 is a binding sync table; its `docs/README.md` is 74 lines and
-  holds a status table covering every document.
+- **A companion project runs this documentation convention today**, and is this runner's first user.
+  Measured there on 2026-08-16: `docs/` carries `product/`, `architecture/`, `decisions/` (17 files),
+  `reference/`, `guides/`, `explanation/`, and `plans/`; its rules file is 301 lines and its §4 is a
+  binding sync table; its `docs/README.md` is 74 lines and holds a status table covering every
+  document. That repository is private, so it is described rather than named here.
 - **`AGENTS.md` is a cross-tool standard**, governed under the Linux Foundation's Agentic AI
   Foundation and read by Codex, Cursor, and Copilot among others.
 - **The test harness API is fixed.** `tests/harness.sh` provides `assert_eq`, `assert_contains`,
@@ -434,7 +434,7 @@ git add docs/README.md docs/product/open-items.md tests/test_docs_status.sh test
 git commit -m "docs: add the documentation map and open-items register
 
 The repository had fifteen documents and nothing saying which were current,
-superseded, or waiting. The status table is the artifact the companion project proved,
+superseded, or waiting. The status table is an artifact proven in another repository,
 and the test makes it self-enforcing: a document nobody listed is a document
 nobody maintains.
 

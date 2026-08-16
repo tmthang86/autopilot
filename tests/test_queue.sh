@@ -53,7 +53,11 @@ assert_eq "" "$(queue_deps 'See issue #7 for context')" "a bare issue reference 
 assert_eq "7" "$(queue_deps 'depends on #7')" "the phrase is matched case-insensitively"
 
 # --- the recorded fixture must parse ---
-# Recorded from the live repository, never hand-written.
+# The SHAPE is recorded from a live `gh issue list --json`, never hand-written:
+# every key, the label object, the milestone object, and the `Depends on #N`
+# line are as gh actually returns them. The prose inside `body` and the label
+# node IDs were redacted afterwards, because the source repository is private.
+# Shape is what CLAUDE.md §4 protects and what these assertions read.
 fix="$REPO_ROOT/tests/fixtures/gh-issue-list.json"
 assert_eq "0" "$(jq -e 'type == "array"' "$fix" >/dev/null 2>&1 && echo 0 || echo 1)" "fixture is a JSON array"
 assert_contains "$(jq -r '.[0].labels[].name' "$fix")" "autopilot" "fixture carries real labels"

@@ -53,10 +53,10 @@ Each was an operator decision made on 2026-08-16, not an inference.
 | 16 | The dashboard is **Go + htmx**, living outside the runner | Server-rendered fragments, htmx vendored as one embedded file, no build step beyond `go build` |
 | 17 | A third skill, **`autopilot-planning`**, precedes delivery. The trio is planning → deliver → review | The product becomes idea-to-shipped, not queue-to-shipped |
 | 18 | Planning writes everything and **commits nothing**; the operator commits | Deliver's commit gate is a mechanical check. A skill that commits its own plan deletes the gate's meaning |
-| 19 | The documentation set is **arc42 + Diátaxis + Nygard ADRs**, as already proven in the companion project | Not invented here. Adopted from a repository where it has been running |
+| 19 | The documentation set is **arc42 + Diátaxis + Nygard ADRs**, as already proven in a companion project | Not invented here. Adopted from a repository where it has been running |
 | 20 | **`AGENTS.md` is the single source of agent rules.** `CLAUDE.md` and every other tool's rule file are thin pointers to it | Copying rules into five files is the stale-document disease the sync table exists to prevent |
 | 21 | Plan steps are **structured**: goal · done-when · verify · Intent · depends-on · tier · needs-human | Sharding becomes mechanical, and a malformed step is caught while writing the plan rather than at 3 a.m. |
-| 22 | Tracking extends the companion project's artifacts rather than adding a `STATUS.md` | One file every commit touches is a merge conflict per task branch |
+| 22 | Tracking extends that project's existing artifacts rather than adding a `STATUS.md` | One file every commit touches is a merge conflict per task branch |
 | 23 | The **implementer writes the documentation its step binds**; the reviewer treats a missing update as grounds for rejection | The §4 sync table becomes enforceable with nobody watching |
 | 24 | The reviewer runs a **configured list of lenses, each a separate fresh call** | Independence is the mechanism, so one prompt with three headings is not a substitute. Cost is the trade, and the list is config |
 | 25 | Cost is accounted **per role and per tier**, never per wake, and every figure carries its `cost_source` | The measured asymmetry: cheap roles make the tokens, the dear role makes the bill. A wake total hides the only actionable number |
@@ -267,8 +267,8 @@ An agent asked to write tests at that point writes tests for **what it built**, 
 asked. The tests then encode the implementation's assumptions rather than the requirement's, and
 they pass — which is the failure mode, not the success.
 
-This is not theoretical. the companion project records two instances found by review, both of which survived
-a green suite:
+This is not theoretical. The companion project records two instances found by review, both of which
+survived a green suite:
 
 - *"A test that runs without asserting. Nine `it()` blocks once reported 8/8 passing while checking
   nothing."*
@@ -284,10 +284,10 @@ implementation session pushes it behind thousands of tokens of tool output. A fr
 those same documents with them **adjacent to the judgment they inform**. The document has not
 changed; its distance from the decision has.
 
-**3. Self-assessment is not review.** the companion project states it flatly: *"A step marked done by whoever
-did it is a self-assessment, not a review."* That repository has already produced the failure in
-the opposite direction — work finished on disk while the status table still read `⏳`. A status that
-is wrong in either direction is the same defect.
+**3. Self-assessment is not review.** The companion project states it flatly: *"A step marked done
+by whoever did it is a self-assessment, not a review."* That repository has already produced the
+failure in the opposite direction — work finished on disk while the status table still read `⏳`. A
+status that is wrong in either direction is the same defect.
 
 #### What each role is actually buying
 
@@ -649,7 +649,7 @@ design.
 
 | Source | What it contributes |
 |---|---|
-| **the companion project** (`a private repository`) | The documentation set and, more importantly, the artifacts that keep it true: the §4 binding sync table, the `docs/README.md` status table, and the plan template. Its `CLAUDE.md` §10 already describes the planner / implementer / documenter / coordinator / reviewer split this repository is automating — including *"the brief names files; the implementer reads them itself"*, which is the rule decision 2 depends on |
+| **A companion project** — private, and the first user of this runner | The documentation set and, more importantly, the artifacts that keep it true: the binding sync table, the `docs/README.md` status table, and the plan template. Its rules file already describes the planner / implementer / documenter / coordinator / reviewer split this repository is automating — including *"the brief names files; the implementer reads them itself"*, which is the rule decision 2 depends on |
 | **[gstack](https://gstacks.org/)** | Reviewing a plan through **distinct role lenses before approval** — `/plan-ceo-review` for the problem as the user meets it, then `/plan-eng-review` for architecture, data flow, state transitions and edge cases |
 | **[superpowers](https://github.com/obra/superpowers)** | Process discipline: classify the request before answering it, ask one question at a time, propose alternatives with a recommendation, hard approval gates, and a self-review pass over the written artifact |
 
@@ -672,7 +672,7 @@ not a rewrite.
 
 ### The documentation set
 
-Adopted from the companion project, which combines three standards rather than inventing a fourth:
+Adopted from that project, which combines three standards rather than inventing a fourth:
 
 ```
 AGENTS.md         ← the rules. The single source; other agents' rule files point here
@@ -699,7 +699,7 @@ files that disagree, and no way to tell which one an agent actually read.
 
 ### Keeping track
 
-Four artifacts, all of them already load-bearing in the companion project, plus one addition:
+Four artifacts, all of them already load-bearing there, plus one addition:
 
 | Artifact | Answers |
 |---|---|
@@ -740,8 +740,8 @@ will refuse at 3 a.m., and catching it while writing the plan costs nothing.
 
 ### Who writes the documentation, with nobody watching
 
-the companion project forbids its implementer from writing any Markdown, because a human-present Claude Code
-session writes it instead. That option does not exist here.
+The companion project forbids its implementer from writing any Markdown, because a human-present
+Claude Code session writes it instead. That option does not exist here.
 
 **The implementer writes the documentation its step binds, and the reviewer treats a missing update
 as grounds for rejection.** The plan's *Documentation to update* list names the obligation, so it is

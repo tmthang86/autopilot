@@ -242,6 +242,179 @@ a configuration error, not a task failure.
 `model:` / `effort:` labels are replaced by `tier:<name>`. An old config therefore fails to load
 rather than running with silently wrong parameters. Migration is the deliver skill's job.
 
+### Why three roles at all
+
+Everything below follows from one claim, so it is worth stating precisely rather than assuming:
+
+> **An agent that implements, tests, and reviews its own work is checking that work with the same
+> context that produced it.** The check and the thing being checked share an origin, so they share
+> the same mistakes.
+
+That is the whole argument. What follows is why it holds, what it costs, and what shape it forces.
+
+#### Three distinct mechanisms, not one
+
+They are worth separating because each is addressed differently, and conflating them produces a
+design that pays for one and believes it bought all three.
+
+**1. Anchoring.** By the time an implementation is finished, the session's context holds the
+reasoning that produced it, the assumptions it rested on, and every dead end taken along the way.
+An agent asked to write tests at that point writes tests for **what it built**, not for what was
+asked. The tests then encode the implementation's assumptions rather than the requirement's, and
+they pass — which is the failure mode, not the success.
+
+This is not theoretical. the companion project records two instances found by review, both of which survived
+a green suite:
+
+- *"A test that runs without asserting. Nine `it()` blocks once reported 8/8 passing while checking
+  nothing."*
+- *"A fixture invented rather than recorded… invented fixtures are what hid the `current.size` bug
+  while every unit test stayed green."*
+
+Neither is a capability failure. A stronger model in the same session writes the same test, because
+the test looks correct from inside the assumptions that produced it.
+
+**2. Attention decay across a long context.** The material that matters most — the plan, the intent
+documents — is read first, and is therefore furthest away by the time judgment is needed. A long
+implementation session pushes it behind thousands of tokens of tool output. A fresh session reads
+those same documents with them **adjacent to the judgment they inform**. The document has not
+changed; its distance from the decision has.
+
+**3. Self-assessment is not review.** the companion project states it flatly: *"A step marked done by whoever
+did it is a self-assessment, not a review."* That repository has already produced the failure in
+the opposite direction — work finished on disk while the status table still read `⏳`. A status that
+is wrong in either direction is the same defect.
+
+#### What each role is actually buying
+
+This is why the tiers are assigned the way they are, and the asymmetry is deliberate.
+
+| Role | Tier | What it contributes | What it does **not** contribute |
+|---|---|---|---|
+| **Implementer** | T | The work | — |
+| **Tester** | T — *the same* | **A clean context.** It has never seen how the code came to be, so it tests the requirement rather than the implementation | More capability. That is not what is missing |
+| **Reviewer** | T+1 — *higher* | **More capability**, for adjudication and repair | A clean context alone. By the time it is called, a disagreement already exists |
+
+**The tester is the same tier on purpose.** Its advantage is *ignorance of the implementation's
+history*, not power. Paying for a stronger model to do a job whose entire value comes from a clean
+context is spending on the wrong axis — it buys nothing the cheap model in a fresh session does not
+already have.
+
+**The reviewer is higher on purpose.** Its job is a different kind of problem: deciding which of two
+disagreeing parties is right, and then repairing the code. That is a capability question, not a
+context one. Decision 23 adds a second reason — judging whether a document still tells the truth
+about the code is harder than writing the code.
+
+#### The ladder of checks
+
+The four checks are not four amounts of the same thing. Each catches a class the one below it
+structurally cannot, and each costs more:
+
+| Check | Kind | Cost | Catches |
+|---|---|---|---|
+| `verify` commands | Mechanical, deterministic | **No tokens** | Anything the project already asserts about itself |
+| **Tester** | Judgment, clean context, same capability | One call | What the commands never asserted — the untested path, the wrong requirement |
+| **Reviewer** | Judgment, more capability | One call, dearer | What the tester's judgment missed; then repairs it |
+| **Coordinator** | Authority, human-present | A person's morning | What none of them may decide: whether disputed work should land at all |
+
+Reading it downward explains decision 13. `verify` costs nothing, so it runs at **every** boundary —
+it must never be the last thing to discover the build is broken, because by then the two dearest
+checks have already been paid for.
+
+Reading it upward explains the escalation. Each layer hands upward only what it cannot settle, so
+cost is incurred only where disagreement actually exists.
+
+#### The workflow
+
+```
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ COORDINATOR — a person is present                                │
+  │ autopilot-planning · autopilot-deliver · autopilot-review        │
+  │ authors intent · classifies the task · assigns the tier          │
+  │ decides what the machine may not: close, requeue, or abandon     │
+  └──────────────────────────────────────────────────────────────────┘
+      │                                            ▲
+      │ issues: goal · Intent: paths · tier        │ ESCALATE — pause; the work
+      │                                            │ stays on autopilot/task-N
+      ▼                                            │ and the argument on the issue
+  ═══════════════ ONE WAKE · NOBODY IS WATCHING ═══╧═══════════════════
+
+  Every role starts a FRESH session and reads the documents itself: the
+  project context docs, plus the task's Intent: paths. The brief names
+  paths; it never pastes excerpts, and no transcript is handed on.
+
+  ┌────────────────┐
+  │ IMPLEMENTER  T │  writes code, tests, and the docs its step binds
+  └───────┬────────┘
+          ▼
+  ┌────────────────┐  costs no tokens · runs at every boundary
+  │    verify()    │──── red ────────────────┐
+  └───────┬────────┘                         │
+       green                                 ▼
+          ▼                       ┌─────────────────────┐
+  ┌────────────────┐   reject     │ REVIEWER        T+1 │
+  │ TESTER       T │─────────────▶│ more power          │
+  │ same power     │              │ adjudicates AND     │
+  │ clean context  │◀─ hands back─│ repairs             │
+  │ outside voice  │              └──────────┬──────────┘
+  └───────┬────────┘                         │
+       pass                        after 2 rounds ──▶ ESCALATE
+          ▼
+  ┌────────────────┐  the gate — but ONLY if the reviewer has not already
+  │ REVIEWER   T+1 │  repaired this task. It never grades its own fix;
+  └───────┬────────┘  there, the tester's pass is the gate
+          ├──── reject ──▶ ESCALATE
+       approve
+          ▼
+  ┌────────────────┐  UNCONDITIONAL — §2.1 has no bypass
+  │    verify()    │──── red ──▶ reset to START_SHA · attempt++
+  └───────┬────────┘             attempts exhausted ──▶ ESCALATE
+       green
+          ▼
+  merge --ff-only ▶ autopilot/main ▶ push ▶ close issue ▶ delete branch
+  ════════════════════════════════════════════════════════════════════
+```
+
+Three properties of that picture are the design, and each is load-bearing:
+
+- **Every arrow crossing into a role crosses a context boundary.** No session is resumed, no
+  transcript is handed on. What passes between roles is the *code itself*, the verdict files, and
+  the paths each role reads for itself. This is the mechanism, not an implementation detail: a
+  handed-on transcript would reintroduce exactly the anchoring the split exists to remove.
+- **The escalation arrow only ever points up.** A role that cannot settle something hands it to
+  something with more capability, and the top of that ladder is a person — never a fourth
+  unattended agent, because deciding whether disputed work should land is authoring intent, which
+  §2.4 reserves for a person.
+- **The reviewer appears twice and is never allowed to grade its own repair.** Where it has already
+  intervened, the tester's pass is the gate. Decision 4 created that hole; decision 6 closes it.
+
+#### What this costs, stated plainly
+
+A task is now at least three agent calls instead of one, and up to `3 + 2×max_rounds` when there is
+disagreement. That is the price, and it is not small.
+
+Three things bound it, and one does not:
+
+- The tier ladder lets the common case run cheaply. Only disagreement escalates.
+- `verify` runs at every boundary and costs nothing, so broken work never reaches a paid check.
+- `wake_timeout_s` is a hard ceiling and is enforceable on every harness.
+- `wake_budget_usd` is **not** a reliable bound: only `claude` reports cost today. It is
+  best-effort, and saying otherwise would be the kind of false assurance this repository has already
+  paid for seven times.
+
+#### Why not more roles, or fewer
+
+**Fewer** — a reviewer alone, with no tester — was rejected because it leaves the anchoring problem
+untouched. The reviewer is expensive and is invoked once; the tester is the cheap, always-on outside
+voice, and removing it means the only clean-context reading of the work happens at the dearest tier.
+
+**More** — a separate architect, or a separate documenter — was rejected twice over. An architect
+role would author intent, which §2.4 forbids to anything running unattended. A documenter role was
+considered and replaced by decision 23: the implementer writes the documentation its step binds, and
+the reviewer treats a missing update as grounds for rejection. Splitting prose from code into a
+fourth call would break the one property the sync table depends on — that a document changes **in
+the same commit** as the code it describes.
+
 ### The role pipeline
 
 ```

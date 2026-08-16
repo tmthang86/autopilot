@@ -58,6 +58,8 @@ Each was an operator decision made on 2026-08-16, not an inference.
 | 21 | Plan steps are **structured**: goal · done-when · verify · Intent · depends-on · tier · needs-human | Sharding becomes mechanical, and a malformed step is caught while writing the plan rather than at 3 a.m. |
 | 22 | Tracking extends the companion project's artifacts rather than adding a `STATUS.md` | One file every commit touches is a merge conflict per task branch |
 | 23 | The **implementer writes the documentation its step binds**; the reviewer treats a missing update as grounds for rejection | The §4 sync table becomes enforceable with nobody watching |
+| 24 | The reviewer runs a **configured list of lenses, each a separate fresh call** | Independence is the mechanism, so one prompt with three headings is not a substitute. Cost is the trade, and the list is config |
+| 25 | Cost is accounted **per role and per tier**, never per wake, and every figure carries its `cost_source` | The measured asymmetry: cheap roles make the tokens, the dear role makes the bill. A wake total hides the only actionable number |
 
 ## Why Rust, and what replaces Rule Zero
 
@@ -220,7 +222,9 @@ Layer 1, `.autopilot/config.json` — committed, the project's contract:
                 "test":      {"tier_offset": 0},
                 "review":    {"tier_offset": 1} },
   "pipeline": { "max_rounds": 2, "turn_timeout_s": 2700,
-                "wake_timeout_s": 10800, "wake_budget_usd": 25.0 },
+                "wake_timeout_s": 10800, "wake_budget_usd": 25.0,
+                "review_lenses": ["plan-conformance", "partial-failure",
+                                  "documentation-truth"] },
   "agent":    { "permission_mode": "bypassPermissions", "default_tier": "standard" },
   "queue":    { "tier_label_prefix": "tier:", "...": "unchanged" }
 }
@@ -295,6 +299,30 @@ This is why the tiers are assigned the way they are, and the asymmetry is delibe
 | **Tester** | T — *the same* | **A clean context.** It has never seen how the code came to be, so it tests the requirement rather than the implementation | More capability. That is not what is missing |
 | **Reviewer** | T+1 — *higher* | **More capability**, for adjudication and repair | A clean context alone. By the time it is called, a disagreement already exists |
 
+The reviewer does not read the work once and form a general opinion. It runs a **list of lenses**,
+each a separate fresh call seeing only its own question — the pattern Cursor reports as *"stacked
+review lenses: multiple independent reviewers catch errors that individual reviewers miss"*, and the
+same shape as the two-lens plan review `autopilot-planning` performs before approval.
+
+`pipeline.review_lenses` is an ordered list in `config.json`, and each entry is one invocation:
+
+| Lens | The single question it is given |
+|---|---|
+| `plan-conformance` | Does this implement the approved task, **and only that**? Where has scope widened without being asked for? |
+| `partial-failure` | What happens on a crash, a restart, a half-written file, or a command that exits non-zero midway? What is asserted rather than checked? |
+| `documentation-truth` | For every row the sync table binds to this change, does the document now tell the truth? (decision 23) |
+
+A lens whose finding cannot be evidenced is a rejection, not a remark.
+
+**Why separate calls rather than one prompt with three headings.** The anchoring argument does not
+stop at the session boundary — a single reviewer that has just argued the code conforms to the plan
+is no longer a neutral reader of whether it survives a restart. One call with a checklist is
+cheaper and weaker, and saying so is better than implying the two are equivalent.
+
+**What it costs, and the escape.** Each lens is one call at the dearest tier. A project that cannot
+afford three lists one, and gets a reviewer no worse than a single general review — it simply gives
+up precisely what was measured to help. The list is config for that reason.
+
 **The tester is the same tier on purpose.** Its advantage is *ignorance of the implementation's
 history*, not power. Paying for a stronger model to do a job whose entire value comes from a clean
 context is spending on the wrong axis — it buys nothing the cheap model in a fresh session does not
@@ -304,6 +332,48 @@ already have.
 disagreeing parties is right, and then repairing the code. That is a capability question, not a
 context one. Decision 23 adds a second reason — judging whether a document still tells the truth
 about the code is harder than writing the code.
+
+#### Independent corroboration, with numbers
+
+The argument above was reached from this repository's own failures. Cursor's
+[agent swarm and model economics](https://cursor.com/blog/agent-swarm-model-economics) report
+reaches the same structural conclusion from a different direction and, unlike this document,
+attaches measurements to it:
+
+> *"a planner never implements, so its context never fills with low-level detail, and a worker never
+> plans, so it can spend all its context on one narrow piece of work"*
+
+Three of their figures change how this design should be read:
+
+| Measured | What it means here |
+|---|---|
+| **$1,339 to $10,565** for the same task complexity, at **comparable quality** | An eight-fold cost spread decided purely by which model does which job. This is the strongest available argument that the tier ladder must exist, and it is stronger than any reasoning in this document |
+| Workers consumed **69–90% of all tokens**, while the dearer planner consumed roughly **two-thirds of the dollars** | Cost does not follow token volume. The expensive role produces little and dominates spend — so cost must be accounted **per role and per tier**, never per wake |
+| A full cheap worker fleet cost **$411** beside a frontier planner | The low tier is cheaper than intuition suggests. An implementer tier can be set far below the reviewer's without the usual hesitation |
+| *"few moments in a large task genuinely require frontier intelligence"* — decomposition and design decisions | In this design those moments are exactly two: the coordinator, and the reviewer while adjudicating. Everything else may be cheap. This is independent support for decision 2 |
+
+One convergence is worth noting on its own: they prevent a planner contradicting itself with
+**compile-checked pointers to design documents**. That is the same mechanism as `Intent:`,
+`queue_intent`, and `validate-plan.sh` — a reference that is verified to resolve rather than trusted
+to. Two systems arrived at it separately, which is the best evidence available that it is load
+bearing rather than stylistic.
+
+#### What this design deliberately does not take from that work
+
+Named here because each is attractive, and an attractive idea rejected without a reason gets
+adopted later by someone who does not know it was considered.
+
+- **Massively parallel agents with merge agents to resolve collisions.** ADR-0001 chose one task per
+  wake. Their own numbers argue *for* that choice at this scale: the hottest file in their older
+  harness saw **7,771 conflicts across 1,173 agents**, and the coordination apparatus that fixes it
+  is larger than this entire runner. Serial delivery has no collisions to arbitrate.
+- **A planner that is an agent.** Theirs decomposes goals and makes design decisions autonomously.
+  §2.4 forbids exactly that: the runner executes intent and never authors it. Decision 2 puts the
+  coordinator with a person instead. **This is the real divergence between the two designs**, and it
+  is a deliberate trade — less autonomy, in exchange for never waking up to work nobody approved.
+- **"Licensed breakage"** — an agent permitted to change core code provided it leaves an explanatory
+  comment that propagates downstream. It is an agent granting itself scope, which is the one thing
+  the blocked-and-ask path exists to prevent.
 
 #### The ladder of checks
 
@@ -362,8 +432,11 @@ cost is incurred only where disagreement actually exists.
           ▼
   ┌────────────────┐  the gate — but ONLY if the reviewer has not already
   │ REVIEWER   T+1 │  repaired this task. It never grades its own fix;
-  └───────┬────────┘  there, the tester's pass is the gate
-          ├──── reject ──▶ ESCALATE
+  │ one call PER   │  there, the tester's pass is the gate.
+  │ LENS, each a   │    plan-conformance · partial-failure · documentation-truth
+  │ fresh session  │  Independence is the mechanism: one call with three
+  └───────┬────────┘  headings is cheaper and weaker, not equivalent.
+          ├──── any lens rejects ──▶ ESCALATE, naming the lens
        approve
           ▼
   ┌────────────────┐  UNCONDITIONAL — §2.1 has no bypass
@@ -390,17 +463,32 @@ Three properties of that picture are the design, and each is load-bearing:
 
 #### What this costs, stated plainly
 
-A task is now at least three agent calls instead of one, and up to `3 + 2×max_rounds` when there is
-disagreement. That is the price, and it is not small.
+Writing `L` for the number of review lenses and `R` for `max_rounds`:
+
+| | Calls | With the defaults `R=2`, `L=3` |
+|---|---|---|
+| Agreement on the first pass | `2 + L` | **5** |
+| Disagreement, converging on the last allowed round | `2 + 2R + L` | **9** |
+| Disagreement, escalating | `2 + 2R` | **6**, then a person |
+
+Against one call today. That is the price, and it is not small.
 
 Three things bound it, and one does not:
 
-- The tier ladder lets the common case run cheaply. Only disagreement escalates.
+- **The tier ladder does most of the work.** Cursor measured an eight-fold spread at comparable
+  quality; nine calls on a well-chosen ladder can cost less than five on a badly chosen one. The
+  number of calls is the wrong thing to optimise first.
 - `verify` runs at every boundary and costs nothing, so broken work never reaches a paid check.
 - `wake_timeout_s` is a hard ceiling and is enforceable on every harness.
 - `wake_budget_usd` is **not** a reliable bound: only `claude` reports cost today. It is
   best-effort, and saying otherwise would be the kind of false assurance this repository has already
   paid for seven times.
+
+**Cost is accounted per role and per tier, never per wake.** This follows directly from the measured
+asymmetry above: the cheap roles produce most of the tokens and the dear one produces most of the
+bill, so a single wake total hides the only number that can be acted on. The journal records
+`role`, `tier`, `harness`, `model`, and `cost_usd` on every `role_end` for exactly this reason, and
+the dashboard aggregates by tier first.
 
 #### Why not more roles, or fewer
 
@@ -437,7 +525,9 @@ round = 0
 │   review(T+1): adjudicate and fix → verdict file
 └───────────────────────────────────┘
 
-reviewer has not yet intervened?  → review(T+1) as the final gate → reject → PAUSE
+reviewer has not yet intervened?  → for each lens in pipeline.review_lenses:
+                                       review(T+1, that lens only, fresh session)
+                                       any reject → PAUSE, naming the lens
 reviewer has already intervened?  → the tester's pass is the gate (decision 6)
 
 verify()   ← final, unconditional. §2.1 has no bypass
@@ -502,9 +592,10 @@ has:
 
 ```jsonl
 {"ts":…,"wake":"w-…","event":"wake_start","issue":42,"tier":"standard"}
-{"ts":…,"wake":"w-…","event":"role_start","role":"implement","round":0,"harness":"claude","model":"sonnet"}
-{"ts":…,"wake":"w-…","event":"role_end","role":"implement","round":0,"classify":"ok","cost_usd":0.42,"duration_s":312}
+{"ts":…,"wake":"w-…","event":"role_start","role":"implement","round":0,"tier":"standard","harness":"claude","model":"sonnet"}
+{"ts":…,"wake":"w-…","event":"role_end","role":"implement","round":0,"tier":"standard","classify":"ok","cost_usd":0.42,"cost_source":"reported","duration_s":312}
 {"ts":…,"wake":"w-…","event":"verdict","role":"test","round":0,"verdict":"reject","reason":"…"}
+{"ts":…,"wake":"w-…","event":"role_end","role":"review","lens":"partial-failure","round":1,"tier":"deep","classify":"ok","cost_usd":1.90,"cost_source":"reported","duration_s":204}
 {"ts":…,"wake":"w-…","event":"verify","result":"red","failed":"unit"}
 {"ts":…,"wake":"w-…","event":"wake_end","outcome":"merged|failed|paused|stood_down"}
 ```
@@ -522,6 +613,16 @@ measured for `claude`, unmeasured for `pi` and `opencode`, and zero for local mo
 that is genuinely enforceable is therefore `wake_timeout_s`, which is harness-agnostic and always
 measurable. `wake_budget_usd` is best-effort and is documented as such rather than presented as a
 guarantee.
+
+Every `role_end` therefore carries `cost_source`, one of `reported`, `estimated`, or `unknown`. A
+figure whose provenance is not recorded beside it becomes a figure someone later trusts, and a
+dashboard total that mixes reported and unknown costs without saying so is this repository's
+recurring failure in a nicer font.
+
+**Aggregation is by tier first.** The measured asymmetry — cheap roles produce most of the tokens,
+the dear role produces most of the bill — means a per-wake total hides the one number an operator
+can act on. The question worth answering is *which tier is the money going to, and is that the tier
+that needed to do the work?*
 
 ## The skill trio, and `autopilot-planning`
 
@@ -684,7 +785,8 @@ already enumerated by `~/.local/share/autopilot/jobs/*.plist`, reads their journ
 
 - wakes in flight, with the role currently running and how long it has been running
 - **orphaned roles** — a `role_start` with no `role_end`; the headline feature
-- accumulated cost and wall-clock per wake, per issue, per tier
+- **cost and wall-clock aggregated by tier first**, then by role, then by wake — with `reported`,
+  `estimated`, and `unknown` costs shown apart and never summed into one figure
 - tasks paused and waiting for a coordinator, with the argument that paused them
 - the circuit breaker, `STOP`, and `launchctl` runs / last exit code per project
 

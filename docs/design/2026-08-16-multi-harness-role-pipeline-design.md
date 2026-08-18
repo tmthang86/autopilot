@@ -1,10 +1,18 @@
 # Multi-harness delivery with a role pipeline — design
 
-> **Type:** Design · **Date:** 2026-08-16 · **Status:** Approved
-> **Scope:** Six changes taken together: a harness abstraction, a project-defined tier ladder, a
-> three-role runtime pipeline, provider preflight in the deliver skill, a run journal with a separate
-> dashboard, and a third skill — `autopilot-planning` — that produces the plans the other two consume.
-> Includes the decision to rewrite the runner in Rust and what replaces Rule Zero.
+> **Type:** Design · **Date:** 2026-08-16 · **Status:** Approved · **Amended 2026-08-18 after review**
+> **Scope:** Six changes, now **sequenced rather than simultaneous**: a Rust rewrite carrying one
+> harness, a three-role runtime pipeline, a run journal, and a third skill — `autopilot-planning`.
+> The tier ladder, the remaining harness adapters, the deliver preflight and the dashboard are
+> **deferred behind a measurement**. Includes the decision to rewrite the runner in Rust and what
+> replaces Rule Zero.
+
+> **Amendment, 2026-08-18.** An engineering review found sixteen defects, nine of them from an
+> outside voice with a clean context. Four were structural: the role-split argument was self-refuting
+> as written (nobody wrote tests from a clean context), the pause path contradicted invariant 1,
+> `merge --ff-only` could not land a resumed task, and the whole harness abstraction was designed
+> from a sample of one measurable harness. The original decision table below is left as the record it
+> is; superseded rows are marked, and the review's decisions are a second table beneath it.
 
 ## Context
 
@@ -35,12 +43,12 @@ Each was an operator decision made on 2026-08-16, not an inference.
 
 | # | Decision | Consequence |
 |---|---|---|
-| 1 | Scope is all five: harness abstraction, tier ladder, role pipeline, preflight, journal + dashboard | One spec, one plan sequence. The five are not independently shippable — the pipeline needs the ladder, the ladder needs the abstraction |
+| 1 | ~~Scope is all five, taken together~~ **SUPERSEDED by 26.** The claim that the five were not independently shippable held in only one direction | The pipeline needs the ladder; the ladder does not need the pipeline, and neither needs a second harness that has never been measured |
 | 2 | The coordinator / planner / classifier is **the agent running the deliver skill**, not a runtime role | Escalation is a pause for a human-present session, not a fourth unattended agent. ADR-0005 and §2.4 survive unchanged |
 | 3 | Runtime is three roles: implement (T), test (T, clean context), review (T+1, blocking gate) | One task is at least three agent invocations |
 | 4 | A tester rejection goes to the reviewer, who **adjudicates and fixes**, then hands back to the tester | The higher tier is the one that repairs the lower tier's work |
 | 5 | The tester↔reviewer loop is capped at **2 rounds**; beyond that the task escalates to the coordinator and **pauses** | Pause must preserve work — see *The branch model* |
-| 6 | A reviewer that has already fixed code does **not** also gate that code; the tester's pass is the gate | Closes the self-approval hole opened by decision 4 |
+| 6 | ~~A reviewer that has already fixed code does not also gate it~~ **RETIRED by 28.** Decision 24 made every lens a fresh session, which is the independence this was protecting | As written it also skipped `documentation-truth` and `plan-conformance` on exactly the tasks that had trouble |
 | 7 | Paused work lives on `autopilot/task-<n>`, pushed to the remote | Survives `git reset --hard`, survives losing the machine |
 | 8 | Provider configuration has two axes, **harness × model** | `ollama` and `lmstudio` are values of *model*, reached through a harness. They are not harnesses: they expose no tools and cannot edit a file, run a command, or commit |
 | 9 | The tier ladder is an **ordered array the project names itself**; `tier_offset` resolves "one step up" | No tier name is known to the runner. §3 portability holds |
@@ -49,7 +57,7 @@ Each was an operator decision made on 2026-08-16, not an inference.
 | 12 | Role verdicts are written to **files**, never parsed from stdout | Harness-agnostic. A missing or malformed verdict is a `task_failure`, never a pass |
 | 13 | `verify` runs at **every loop boundary**, not only at the end | It costs no tokens, so it must never be the last thing to discover the build is broken |
 | 14 | The runner is **rewritten in Rust**, shelling out to `git` and `gh` exactly as today | Supersedes Rule Zero's "POSIX shell only". See *Why Rust* |
-| 15 | The rewrite is a **single cutover**; the shell runner is frozen as the reference specification | Two sources of truth are the thing §1 exists to prevent, so the overlap is bounded and ends |
+| 15 | The rewrite is a **single cutover**; the shell runner is frozen as the reference specification | Two sources of truth are the thing §1 exists to prevent, so the overlap is bounded and ends. **Amended by 26:** the cutover carries one harness and one role first |
 | 16 | The dashboard is **Go + htmx**, living outside the runner | Server-rendered fragments, htmx vendored as one embedded file, no build step beyond `go build` |
 | 17 | A third skill, **`autopilot-planning`**, precedes delivery. The trio is planning → deliver → review | The product becomes idea-to-shipped, not queue-to-shipped |
 | 18 | Planning writes everything and **commits nothing**; the operator commits | Deliver's commit gate is a mechanical check. A skill that commits its own plan deletes the gate's meaning |
@@ -59,7 +67,39 @@ Each was an operator decision made on 2026-08-16, not an inference.
 | 22 | Tracking extends that project's existing artifacts rather than adding a `STATUS.md` | One file every commit touches is a merge conflict per task branch |
 | 23 | The **implementer writes the documentation its step binds**; the reviewer treats a missing update as grounds for rejection | The §4 sync table becomes enforceable with nobody watching |
 | 24 | The reviewer runs a **configured list of lenses, each a separate fresh call** | Independence is the mechanism, so one prompt with three headings is not a substitute. Cost is the trade, and the list is config |
-| 25 | Cost is accounted **per role and per tier**, never per wake, and every figure carries its `cost_source` | The measured asymmetry: cheap roles make the tokens, the dear role makes the bill. A wake total hides the only actionable number |
+| 25 | Cost is accounted **per role and per tier**, never per wake, and every figure carries its `cost_source` | The measured asymmetry: cheap roles make the tokens, the dear role makes the bill. A wake total hides the only actionable number. **Amended by 31:** `cost_source` is `reported \| unknown`; `estimated` is gone |
+
+## Decisions taken on review, 2026-08-18
+
+Sixteen defects, sixteen decisions. Seven came from a four-section engineering review of this
+document; nine came from an outside voice given the design, the rules, and the observed-behaviour
+record, and nothing else — no transcript, no summary of what had been decided. That asymmetry is the
+point: the session that wrote this document could not see finding 27 below, and had read the line
+that produces it many times.
+
+| # | Decision | Consequence |
+|---|---|---|
+| 26 | **Scope is sequenced, not simultaneous.** The Rust cutover carries **one harness and one role**. The tier ladder, the remaining adapters, the deliver preflight and the dashboard wait until a second harness is **measured** cheaper at comparable quality on real tasks | The Rust case is measured and independent of multi-harness; the ladder's case is not measurable on any machine the operator owns. Building the abstraction from a sample of one is the trap this design supplied its own evidence for |
+| 27 | **The tester writes the tests.** The implementer writes code and the documentation its step binds, and **no tests** | The role-split argument was self-refuting: it explains at length why an agent writes tests to its own assumptions, then handed the implementer that job. Nobody wrote tests from a clean context. This is what the argument actually asks for |
+| 28 | The final review lenses **always run**; decision 6 is retired by ADR | Decision 24 already makes each lens a fresh session, which is the independence decision 6 protected. As written it skipped `documentation-truth` — the only enforcement of decision 23 — on precisely the tasks that had trouble |
+| 29 | A task branch is **rebased onto `autopilot/main` before the final verify**. A rebase conflict **pauses** | `--ff-only` cannot land a task that paused while another task landed, which is the normal case on the pause path. Rebasing after verify would land a tree nobody verified |
+| 30 | **One journal**, `.autopilot/journal.jsonl`, with a nullable `issue` and a rotation rule | A wake that stands down before picking an issue had no path to write to, so the "nothing happened last night" case — the one the journal exists for — left zero bytes |
+| 31 | `cost_source` is **`reported` \| `unknown`**. `estimated` is removed | It was never defined. Defining it means a price table in the runner, which goes stale silently and then shows a number that looks measured |
+| 32 | **Nothing spawns a subprocess without a timeout**, through one helper | Only `run()` had a timeout. `available()` runs every wake for every tier while the lock is held, and `probe()` runs on every failure path. `lms ls` hung on the development machine on 2026-08-16 |
+| 33 | The **remaining wake budget is checked before each role**, never mid-role | `turn_timeout_s` × the worst-case call count is more than twice `wake_timeout_s`, so the wake ceiling was the normal terminator of any hard task — and cutting mid-role forges an orphan, poisoning the journal's headline signal |
+| 34 | **Pause commits to the task branch and says so.** Invariant 1 is reworded to *no unverified work reaches `autopilot/main`* | "Push the branch, no reset" cannot be done without committing. The invariant needed rewording rather than the path needing a silent exception |
+| 35 | Verdict paths carry the **wake id and attempt**, and the implementer **cannot author a verdict** | Without them, attempt 2 replays round 0 and reads attempt 1's `pass`. And an implementer running with permission checks disabled could write the tester's verdict — the reviewed party authoring its own review |
+| 36 | The per-issue attempt counter gets **explicit storage and an eviction rule** | `max_attempts_per_issue` bounds the whole retry-and-pause ladder and had nowhere to live: `state.json` is flat and the process exits after every task. Invariant 3 says write-only state is not state |
+| 37 | A **red verify returns to the implementer**, not the reviewer | A compile error is not a disagreement. Sending it to the dearest tier inverts the design's own rule that cost is incurred only where disagreement exists, and skips the party holding the context |
+| 38 | `guard_tiers` checks **only the tiers the picked task needs**, and runs **after** the queue is known | Requiring every tier meant the loop would stand down every night on the operator's own machine, reported as `ProviderUnavailable` — indistinguishable from a quiet queue. It also spawned every harness CLI before discovering there was no work |
+| 39 | Decision 20 is **reopened**: making `CLAUDE.md` a pointer trades a measured behaviour for a standards argument | `observed-behaviour.md` records that a `claude` session loads the project's `CLAUDE.md` automatically. A pointer converts automatic rule delivery into "the agent hopefully follows a link", unattended |
+| 40 | Orphan detection carries **automated tests at both layers** — the runner killed mid-role, and the parser on a recorded fixture | It is the journal's headline feature and its only proof was a manual step. A monitor that fails silently is the disease wearing the cure's clothes |
+| 41 | The workflow diagram is **redrawn with every amendment**, in the same commit | Decisions 27, 28, 29, 33 and 37 each moved an arrow. A stale diagram actively misleads, which is worse than none |
+
+**One finding was not about this design at all.** `runner/run-once.sh:89` checks out the work branch
+without resetting first, so a wake killed mid-run leaks uncommitted files into the *next* task's
+commit, under the wrong issue, with verification green. Reproduced against a real repository on
+2026-08-18. It is a live defect in the shipped shell runner and is fixed there, not here.
 
 ## Why Rust, and what replaces Rule Zero
 
@@ -153,11 +193,22 @@ knows a harness exists.
 
 | Method | Returns | Called by |
 |---|---|---|
-| `available()` | binary present **and** authenticated | preflight (deliver) and `guard_tiers` (every wake) |
+| `available()` | binary present **and** authenticated | `guard_tiers`, for the tiers the picked task needs |
 | `models()` | model identifiers actually reachable | preflight, to verify a named model exists |
 | `run(prompt, cwd, log, params)` | spawns it, prompt on **stdin**, honouring `turn_timeout_s` | the pipeline |
 | `probe()` | one trivial call — is the provider reachable at all? | classification |
 | `classify(log, status)` | `Ok` \| `TaskFailure` \| `ProviderUnavailable` | the pipeline |
+
+**Every one of these spawns a subprocess, and every one goes through a single spawn helper that
+takes a timeout.** Only `run()` originally carried one, while `available()` runs before the lock is
+released and `probe()` runs on every failure path — and `lms ls` hung on the development machine on
+2026-08-16, so this is a measured failure mode rather than a precaution. The invariant is *nothing
+spawns a process without a ceiling*, enforced by there being exactly one door, which is grep-checkable
+in a way that "remember to pass a timeout" is not.
+
+**The trait ships with one implementation.** Decision 26 defers the others: a seam with a single
+implementation costs almost nothing and keeps the boundary honest, whereas four adapters — three of
+which cannot be executed on any machine the operator owns — is an abstraction shaped by guesses.
 
 `classify` has a **shared default** in `harness/mod.rs`: exit status 0 is `Ok`; otherwise `probe()`
 decides between `TaskFailure` and `ProviderUnavailable`. Only `claude.rs` overrides it, to keep the
@@ -295,8 +346,8 @@ This is why the tiers are assigned the way they are, and the asymmetry is delibe
 
 | Role | Tier | What it contributes | What it does **not** contribute |
 |---|---|---|---|
-| **Implementer** | T | The work | — |
-| **Tester** | T — *the same* | **A clean context.** It has never seen how the code came to be, so it tests the requirement rather than the implementation | More capability. That is not what is missing |
+| **Implementer** | T | The code, and the documentation its step binds. **Not the tests** | — |
+| **Tester** | T — *the same* | **Tests written from a clean context.** It has never seen how the code came to be, so it tests the requirement rather than the implementation | More capability. That is not what is missing |
 | **Reviewer** | T+1 — *higher* | **More capability**, for adjudication and repair | A clean context alone. By the time it is called, a disagreement already exists |
 
 The reviewer does not read the work once and form a general opinion. It runs a **list of lenses**,
@@ -323,10 +374,25 @@ cheaper and weaker, and saying so is better than implying the two are equivalent
 afford three lists one, and gets a reviewer no worse than a single general review — it simply gives
 up precisely what was measured to help. The list is config for that reason.
 
+**The tester writes the tests, and this is the whole point.** An earlier draft of this design had the
+implementer write them and left the tester to read and judge — which delivers none of the argument
+above. The anchored tests still get written, by the anchored party, and a second reader looking at
+them is not the same as a second author writing them. The mechanism is *who authors the test*, not
+*who reads it afterwards*.
+
+It also produces a harder pass criterion for free. A tester that writes tests either has tests that
+run or does not; a tester that only reads produces a prose opinion, and a prose opinion is what the
+verdict file has to encode. Code is a better verdict than an adjective.
+
 **The tester is the same tier on purpose.** Its advantage is *ignorance of the implementation's
 history*, not power. Paying for a stronger model to do a job whose entire value comes from a clean
 context is spending on the wrong axis — it buys nothing the cheap model in a fresh session does not
-already have.
+already have. Writing tests against a stated requirement is well within the reach of a cheap tier;
+that is what makes this affordable.
+
+**What the implementer loses.** It can no longer run the tests it would have written before handing
+over, so the first round goes red more often. That is a real cost, paid to stop tests that pass
+because they were written to agree with the code.
 
 **The reviewer is higher on purpose.** Its job is a different kind of problem: deciding which of two
 disagreeing parties is right, and then repairing the code. That is a capability question, not a
@@ -413,33 +479,37 @@ cost is incurred only where disagreement actually exists.
   project context docs, plus the task's Intent: paths. The brief names
   paths; it never pastes excerpts, and no transcript is handed on.
 
-  ┌────────────────┐
-  │ IMPLEMENTER  T │  writes code, tests, and the docs its step binds
+  ┌────────────────┐  budget check BEFORE every role — too little left ▶ PAUSE
+  │ IMPLEMENTER  T │  code + the docs its step binds.  NO TESTS.
   └───────┬────────┘
           ▼
   ┌────────────────┐  costs no tokens · runs at every boundary
-  │    verify()    │──── red ────────────────┐
-  └───────┬────────┘                         │
-       green                                 ▼
-          ▼                       ┌─────────────────────┐
-  ┌────────────────┐   reject     │ REVIEWER        T+1 │
-  │ TESTER       T │─────────────▶│ more power          │
+  │    verify()    │──── red ──▶ back to IMPLEMENTER (cheap, holds the context)
+  └───────┬────────┘            a build error is not a disagreement
+       green
+          ▼
+  ┌────────────────┐   reject     ┌─────────────────────┐
+  │ TESTER       T │─────────────▶│ REVIEWER        T+1 │
   │ same power     │              │ adjudicates AND     │
   │ clean context  │◀─ hands back─│ repairs             │
-  │ outside voice  │              └──────────┬──────────┘
+  │ WRITES tests   │              └──────────┬──────────┘
   └───────┬────────┘                         │
        pass                        after 2 rounds ──▶ ESCALATE
           ▼
-  ┌────────────────┐  the gate — but ONLY if the reviewer has not already
-  │ REVIEWER   T+1 │  repaired this task. It never grades its own fix;
-  │ one call PER   │  there, the tester's pass is the gate.
-  │ LENS, each a   │    plan-conformance · partial-failure · documentation-truth
-  │ fresh session  │  Independence is the mechanism: one call with three
+  ┌────────────────┐  the gate. ALWAYS runs — decision 6 retired, because each
+  │ REVIEWER   T+1 │  lens is already a fresh session with no memory of the repair.
+  │ one call PER   │    plan-conformance · partial-failure · documentation-truth
+  │ LENS, each a   │  Independence is the mechanism: one call with three
   └───────┬────────┘  headings is cheaper and weaker, not equivalent.
           ├──── any lens rejects ──▶ ESCALATE, naming the lens
        approve
           ▼
-  ┌────────────────┐  UNCONDITIONAL — §2.1 has no bypass
+  ┌────────────────┐  rebase BEFORE the final verify, so verify runs on the
+  │ rebase onto    │  exact tree that will land
+  │ autopilot/main │──── conflict ──▶ ESCALATE (never auto-resolved)
+  └───────┬────────┘
+          ▼
+  ┌────────────────┐  UNCONDITIONAL — no unverified work reaches autopilot/main
   │    verify()    │──── red ──▶ reset to START_SHA · attempt++
   └───────┬────────┘             attempts exhausted ──▶ ESCALATE
        green
@@ -468,6 +538,7 @@ Writing `L` for the number of review lenses and `R` for `max_rounds`:
 | | Calls | With the defaults `R=2`, `L=3` |
 |---|---|---|
 | Agreement on the first pass | `2 + L` | **5** |
+| A red verify on the first pass | `+1` per red round, back to the implementer at tier T | cheapest possible retry |
 | Disagreement, converging on the last allowed round | `2 + 2R + L` | **9** |
 | Disagreement, escalating | `2 + 2R` | **6**, then a person |
 
@@ -506,29 +577,46 @@ the same commit** as the code it describes.
 ### The role pipeline
 
 ```
-guard_all + guard_tiers        every tier in the ladder must be available()
-                               otherwise ProviderUnavailable → back off, no retry consumed
+guard_all                      lock, branch, quiet hours, cap, STOP, resume_after
+pick issue → resolve intent → resolve tier T
+guard_tiers                    ONLY the tiers this task needs (T and T+1), and only
+                               AFTER the queue is known — requiring every tier meant
+                               standing down nightly on a machine with one harness,
+                               reported as ProviderUnavailable and indistinguishable
+                               from a quiet queue
+                               unavailable → ProviderUnavailable, back off, no retry consumed
 
-pick issue → resolve intent → resolve tier T (label tier:<name>, else default_tier)
+reset --hard + clean           BEFORE any checkout. A wake killed mid-run leaves
+                               uncommitted files, and checkout carries them onto the
+                               next task's branch and into its commit, under the wrong
+                               issue, with verification green. Measured 2026-08-18
 git checkout -B autopilot/task-<n> autopilot/main
 START_SHA = HEAD ;  claim
+
+every role is preceded by:  budget_left < turn_timeout_s → PAUSE cleanly
+                            (never cut mid-role; a cut role forges an orphan)
 
 implement(T) ── ProviderUnavailable → release, back off, exit 0
              └─ TaskFailure         → reset, comment, attempt++, exit 0
 
 round = 0
-┌─▶ verify()                    costs no tokens. Red counts as a tester rejection
-│     green → test(T, clean session) → verdict file
+┌─▶ verify()                    costs no tokens
+│     red   → back to implement(T). A build error is not a disagreement,
+│             and the implementer is cheaper and still holds the context
+│     green → test(T, clean session, WRITES the tests) → verdict file
 │                 pass   → leave the loop
 │                 reject → fall through
 │   round++ ;  round > max_rounds → PAUSE
 │   review(T+1): adjudicate and fix → verdict file
 └───────────────────────────────────┘
 
-reviewer has not yet intervened?  → for each lens in pipeline.review_lenses:
-                                       review(T+1, that lens only, fresh session)
-                                       any reject → PAUSE, naming the lens
-reviewer has already intervened?  → the tester's pass is the gate (decision 6)
+for each lens in pipeline.review_lenses:            ← ALWAYS, decision 28
+    review(T+1, that lens only, fresh session)
+    any reject → PAUSE, naming the lens
+
+rebase the task branch onto autopilot/main         ← decision 29
+    conflict → PAUSE. Never auto-resolved: a merge nobody read is a
+               commit nobody approved, and §2.4 reserves that for a person
 
 verify()   ← final, unconditional. §2.1 has no bypass
    red   → reset to START_SHA, comment, attempt++
@@ -556,9 +644,21 @@ three different shapes. Parsing them for a pass/reject decision would mean a sec
 harness, forever. Instead each role writes:
 
 ```
-.autopilot/runs/<issue>/round-<k>/{tester,reviewer}-verdict.json
+.autopilot/runs/<issue>/<wake-id>/attempt-<a>/round-<k>/{tester,reviewer}-verdict.json
     { "verdict": "pass" | "reject", "reason": "…", "evidence": ["path:line", …] }
 ```
+
+**The path carries the wake and the attempt, and that is not decoration.** `.autopilot/` survives
+`git reset --hard` and `git clean` by design, so a path keyed only on issue and round means attempt 2
+replays round 0 and reads attempt 1's `pass`. A stale approval is worse than a missing one: invariant
+5 catches the missing case and would wave this one through.
+
+**The implementer must not be able to author a verdict.** It runs with permission checks disabled and
+can write any file in the tree, so nothing in the filesystem stops it writing `tester-verdict.json`
+before the tester exists. The runner therefore **creates the round directory immediately before
+invoking a role and refuses to read a verdict file that already existed** — the check is a timestamp
+and an existence test, made by the runner rather than trusted to the agent. A mechanism that makes a
+reviewer independent must not be authorable by the reviewed party.
 
 Every harness has a write tool, so this needs no adapter code at all. `.autopilot/` is already
 excluded from `git reset --hard` and `git clean`, so the record survives every rejection path — which
@@ -577,9 +677,15 @@ main                       the runner never touches it (guard unchanged)
 
 | Outcome | Action |
 |---|---|
-| verify green | `merge --ff-only` into `autopilot/main`, push, close, delete the task branch both sides |
-| **pause** | push the task branch, comment the full argument, label `blocked`, **no reset** |
+| verify green | rebase onto `autopilot/main`, verify again, `merge --ff-only`, push, close, delete the task branch both sides |
+| **pause** | **commit** what exists to the task branch with a `WIP:` subject saying it is unverified, push it, comment the full argument, label `blocked` |
 | failure with attempts remaining | reset to `START_SHA`, delete the task branch; the journal remains |
+
+**Pause commits, and the invariant is reworded rather than excepted.** "Push the branch, no reset"
+was not implementable: you cannot push what is not committed. Invariant 1 said *nothing is
+committed*; what it always meant, and now says, is **no unverified work reaches `autopilot/main`**.
+A `WIP:` commit on a task branch nobody merges satisfies that, and pretending otherwise would have
+produced a silent exception on the one path built to preserve work.
 
 This tightens something incidentally: the agent is now confined to a task branch, so
 `autopilot/main` is never dirtied by an agent directly. `_settle_guard_branch` changes from *"not
@@ -587,7 +693,8 @@ main"* to *"exactly this issue's task branch"*, which is a stronger check than t
 
 ### The journal
 
-Append-only JSONL at `.autopilot/runs/<issue>/journal.jsonl`, and the only interface the dashboard
+Append-only JSONL at `.autopilot/journal.jsonl` — **one file per project**, with a nullable
+`issue` — and the only interface the dashboard
 has:
 
 ```jsonl
@@ -614,7 +721,18 @@ that is genuinely enforceable is therefore `wake_timeout_s`, which is harness-ag
 measurable. `wake_budget_usd` is best-effort and is documented as such rather than presented as a
 guarantee.
 
-Every `role_end` therefore carries `cost_source`, one of `reported`, `estimated`, or `unknown`. A
+**One file, because a wake that stands down has no issue.** A per-issue path had nowhere to write
+`{"event":"wake_end","outcome":"stood_down"}` — quiet hours, a STOP file, a closed usage window, an
+empty queue — so the "nothing happened last night" case left zero bytes, and that is the case the
+journal exists for. One file also means one open-and-flush path, and a dashboard that reads one file
+per project instead of walking a directory tree for issue numbers it does not know yet.
+
+**Rotation.** At a daily cap of twelve tasks the file grows by roughly a hundred lines a day, so this
+is not urgent — which is exactly why it must be written down now rather than discovered at a hundred
+megabytes. The runner rolls `journal.jsonl` to `journal-<date>.jsonl` when it exceeds a configured
+size, and never deletes.
+
+Every `role_end` therefore carries `cost_source`, either `reported` or `unknown`. A
 figure whose provenance is not recorded beside it becomes a figure someone later trusts, and a
 dashboard total that mixes reported and unknown costs without saying so is this repository's
 recurring failure in a nicer font.
@@ -786,7 +904,7 @@ already enumerated by `~/.local/share/autopilot/jobs/*.plist`, reads their journ
 - wakes in flight, with the role currently running and how long it has been running
 - **orphaned roles** — a `role_start` with no `role_end`; the headline feature
 - **cost and wall-clock aggregated by tier first**, then by role, then by wake — with `reported`,
-  `estimated`, and `unknown` costs shown apart and never summed into one figure
+  and `unknown` costs shown apart and never summed into one figure
 - tasks paused and waiting for a coordinator, with the argument that paused them
 - the circuit breaker, `STOP`, and `launchctl` runs / last exit code per project
 
@@ -801,7 +919,7 @@ added because this design creates the ways to break them.
 
 | # | Invariant | Change |
 |---|---|---|
-| 1 | Verification gates the commit | **Strengthened.** It now also runs at every loop boundary, and the final run before the merge is unconditional |
+| 1 | **No unverified work reaches `autopilot/main`** | **Reworded.** It previously read *"nothing is committed"*, which the pause path cannot satisfy — you cannot push a branch without committing to it. What it always meant is what it now says. Verify still runs at every loop boundary, and the final run before the merge is unconditional |
 | 2 | Usage exhaustion is not a task failure | **Generalised** to `ProviderUnavailable`: closed usage window, dead endpoint, or expired token. None consumes a retry |
 | 3 | State round-trips | **Widened** to the journal and to paused task branches. A paused task must be resumable from what is on disk and on the remote |
 | 4 | The runner executes intent, it never authors it | **Unchanged and reinforced.** The coordinator is human-present; escalation is a pause, not a fourth unattended agent |
@@ -825,8 +943,19 @@ Two classes need tests that did not exist before:
 
 - **Pipeline exit paths.** Every way a task can end must be exercised — guard stand-down, unavailable
   provider, intent refusal, failed claim, implement failure, rounds exhausted, attempts exhausted,
-  final-review rejection, red verify, and success — including the pause-and-resume round trip and the
-  reviewer-already-intervened branch of decision 6.
+  final-review rejection, red verify, **rebase conflict**, **wake budget exhausted before a role**,
+  and success — including the pause-and-resume round trip.
+- **The orphan, at both layers.** A `role_start` with no `role_end` is the journal's headline feature
+  and had no automated test anywhere; its only proof was a person killing a process by hand. The
+  runner layer spawns a hanging harness stub, kills it, and asserts the journal shows the start
+  without the end — which is what proves the per-event flush. The reader layer asserts the same
+  detection over a recorded fixture, in milliseconds. A monitor whose only evidence is a manual step
+  is a monitor that regresses silently, which is the disease wearing the cure's clothes.
+- **Crash inheritance.** A wake killed mid-run, followed by a second wake on a *different* issue,
+  must not carry the first wake's uncommitted files into the second commit. Reproduced against a real
+  repository on 2026-08-18; it exists in the shell runner today.
+- **Verdict staleness and forgery.** Attempt 2 must not read attempt 1's verdict, and a verdict file
+  that existed before its role was invoked must be refused.
 - **The shell runner as reference.** During the cutover the existing suite becomes a conformance
   suite: the same fixture repositories, the same stubs, run against both binaries, compared. That is
   what decision 15 buys, and it ends when the shell is deleted.
@@ -883,6 +1012,12 @@ Carried forward, and added to:
 - Whether `opencode` reaches `ollama` and `lmstudio` in practice — documented, unmeasured here,
   and the only route to a local-model tier now that `pi` is confirmed not to support them
 - The throttled `rate_limit_event` payload — still only `{"status":"allowed"}` has ever been seen
+- **Whether a second harness is actually cheaper at comparable quality on real tasks.** This is now
+  the gate on the tier ladder and the remaining adapters (decision 26). Nothing about the ladder is
+  built until it is measured, because its entire value is a cost delta nobody has observed
+- **Whether `CLAUDE.md` as a pointer still delivers the rules** (decision 39). `observed-behaviour.md`
+  records that a `claude` session loads the project's `CLAUDE.md` automatically; a pointer trades that
+  measured behaviour for an argument about standards, and the trade has not been tested unattended
 
 ## GSTACK REVIEW REPORT
 
@@ -898,7 +1033,8 @@ Carried forward, and added to:
   sample of one measurable harness. Resolved toward the outside voice: the Rust cutover proceeds on
   one harness (its justification is measured and independent), and the tier ladder plus adapters wait
   until a second harness is measured cheaper at comparable quality on real tasks.
-- **VERDICT:** ENG REVIEW COMPLETE — 16 findings, all decided, none left open. The design needs
-  amending before plans 2–4 are executed; plan 1 needs re-approval for its validator change.
+- **VERDICT:** ENG REVIEW COMPLETE — 16 findings, all decided, **all applied to this document on
+  2026-08-18**. Plans 2–4 must be rewritten against decision 26 before execution; plan 1 needs
+  re-approval for its validator change; `runner/run-once.sh:89` needs its live fix in shell.
 
 NO UNRESOLVED DECISIONS

@@ -883,3 +883,22 @@ Carried forward, and added to:
 - Whether `opencode` reaches `ollama` and `lmstudio` in practice — documented, unmeasured here,
   and the only route to a local-model tier now that `pi` is confirmed not to support them
 - The throttled `rate_limit_event` payload — still only `{"status":"allowed"}` has ever been seen
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES_OPEN | 16 issues, 1 critical gap |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **CROSS-MODEL:** One genuine tension, on whether to build the harness abstraction at all from a
+  sample of one measurable harness. Resolved toward the outside voice: the Rust cutover proceeds on
+  one harness (its justification is measured and independent), and the tier ladder plus adapters wait
+  until a second harness is measured cheaper at comparable quality on real tasks.
+- **VERDICT:** ENG REVIEW COMPLETE — 16 findings, all decided, none left open. The design needs
+  amending before plans 2–4 are executed; plan 1 needs re-approval for its validator change.
+
+NO UNRESOLVED DECISIONS

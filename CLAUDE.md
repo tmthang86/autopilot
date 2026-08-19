@@ -16,27 +16,34 @@ that harder, the change is wrong even if it works.
 
 | Constraint | Why |
 |---|---|
-| POSIX shell only, no runtime dependencies beyond `git`, `gh`, `jq`, and the agent CLI | Anything the operator has to trust but cannot read is a liability |
-| No file in `runner/lib/` exceeds ~150 lines | A file you can hold in your head is a file you can audit |
-| No network calls except through `gh` and the agent CLI | The set of things that can reach out stays enumerable |
+| Rust, with a dependency tree an operator can enumerate (`serde`, `serde_json`, `time`, `libc` only). `git` and `gh` remain child processes | Anything the operator has to trust but cannot read is a liability |
+| No file in `runner/src/` exceeds ~200 lines | A file you can hold in your head is a file you can audit |
+| No network calls except through `gh` and the harness CLIs | The set of things that can reach out stays enumerable |
 | Never write outside the project root or `.autopilot/` | Enforced by an explicit path check, not by convention |
 | Never operate on the project's main branch | Checked before every run, not assumed |
 
-## 2. The four invariants
+## 2. The eight invariants
 
 These hold on every code path, including error paths. A change that breaks one is a bug
-regardless of what it enables.
+regardless of what it enables. The first four are the originals, reworded by the multi-harness
+design; the last four are added by it.
 
-1. **Verification gates the commit.** If the project's verify commands do not all pass, the
-   working tree is reset and nothing is committed. There is no flag to skip this.
-2. **Usage exhaustion is not a task failure.** Running out of the agent's usage window must
-   never consume a task's retry budget or mark it failed. Classify before you back off.
+1. **No unverified work reaches `autopilot/main`.** The project's verify commands must all pass
+   before the fast-forward merge. A red final verify rewinds to the recorded start SHA; there is
+   no flag to skip this. (Paused work may be committed as a `WIP:` commit on its task branch, but
+   never merged.)
+2. **Usage exhaustion is not a task failure.** Running out of the agent's usage window — or a dead
+   provider endpoint, or an expired token — must never consume a task's retry budget or mark it
+   failed. Classify before you back off.
 3. **State round-trips.** Anything written to `state.json` must be readable back into the same
-   shape by the next run. A process that exits after every task has no memory other than this
-   file; write-only state is not state.
-4. **The runner executes intent, it never authors it.** It implements tasks that a human
-   approved. When it meets a decision the task does not cover, it records the question and
-   stops that task.
+   shape by the next run. This extends to the journal and to paused task branches.
+4. **The runner executes intent, it never authors it.** It implements tasks that a human approved.
+   When it meets a decision the task does not cover, it records the question and pauses that task.
+5. **A missing or malformed verdict is never a pass.** A reviewer that died mid-run must not become
+   an approval.
+6. **The agent never works on `autopilot/main`, only on a task branch.**
+7. **No harness name appears outside `runner/src/harness/`.**
+8. **The runner never references a skill or the dashboard.**
 
 ## 3. Portability is the product
 
@@ -61,14 +68,17 @@ stop.** It belongs in the config schema instead.
 
 ## 4. Testing
 
-- Every function in `runner/lib/` that makes a decision has a test. Functions that only print do
+- Every function in `runner/src/` that makes a decision has a test. Functions that only print do
   not.
 - Tests run against a **real throwaway git repository** created in a temp directory, never
   against mocks of git. Git's behaviour is the thing being relied on.
-- `gh` and the agent CLI are stubbed with fixture scripts on `PATH`. Record real output shapes
+- `gh` and the harness CLIs are stubbed with fixture scripts on `PATH`. Record real output shapes
   into `tests/fixtures/` — never invent a JSON shape to make a test pass.
-- Every invariant in §2 has at least one test that fails if the invariant is removed.
-- `shellcheck` clean before commit.
+- Every invariant in §2 has at least one test that fails if the invariant is removed. Invariants 7
+  and 8 are grep tests.
+- `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean before commit for the
+  runner; `go vet` and `gofmt -l` clean for the dashboard; `shellcheck` clean for any shell that
+  remains (the skills and the test harness).
 
 ## 5. Documentation
 

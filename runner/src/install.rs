@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::install_labels::{create_label, declared_tiers, home, ready_label};
 
-const CONFIG_TEMPLATE: &str = include_str!("../templates/config.json");
+const CONFIG_TEMPLATE: &str = include_str!("../templates/config-tiered.json");
 const PLIST_TEMPLATE: &str = include_str!("../templates/launchd-binary.plist.tmpl");
 
 pub fn run(project: &Path, interval: u64) -> i32 {

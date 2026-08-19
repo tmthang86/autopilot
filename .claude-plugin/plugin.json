@@ -1,7 +1,7 @@
 {
   "name": "autopilot",
   "description": "Unattended delivery loop: takes approved plans to reviewed GitHub issues, runs them one at a time, and gates every commit on the project's own verification commands",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "thangtran"
   },

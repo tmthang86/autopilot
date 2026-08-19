@@ -8,6 +8,41 @@ regression test now; the point of writing them down is that the next person does
 
 ---
 
+## 2026-08-19 — measuring the `pi` and `opencode` CLIs for the Rust cutover
+
+Recorded while building the Rust runner, by running the real CLIs directly. Nothing here is
+inferred from documentation.
+
+**`pi -p --mode json` exits 0 even when the model errors.** A run with `--model deepseek/does-not-exist`
+printed `"stopReason":"error"` and an `"errorMessage"` inside `message_end`/`turn_end`/`agent_end`
+events, and the process still exited 0. The transcript is recorded at
+`tests/fixtures/pi-run-error.jsonl`. A classifier that reads the exit code reports an errored run as
+success. The adapter must read `stopReason`/`errorMessage` from the stream.
+
+**`pi --mode json` cost lives on `usage.cost.total`.** The success transcript
+(`tests/fixtures/pi-run-success.jsonl`) carries cost on the assistant `message_end` event under
+`message.usage.cost.total` (and again on `turn_end`/`agent_end`). The final `message_end` is the
+number to record.
+
+**`pi auth check --provider P --json` is inconsistent about its exit code.** With `pi` 0.84.2,
+`--provider deepseek` (ready) exits 0 and prints `{"status":"ready"}`; `--provider anthropic`
+(no credentials) exits **1** and prints `{"status":"not_ready",...,"reason":"credentials_not_configured"}`.
+The earlier design note said the exit code was 0 regardless of readiness; that is no longer true on
+this version. Either way the JSON `status` is the only trustworthy signal — the exit code flips
+between versions.
+
+**`pi --list-models` lists reachable models, provider-first.** Output is a whitespace table
+`provider model context max-out thinking images`; the second column is the model id
+(`deepseek deepseek-v4-flash`). Recorded at `tests/fixtures/pi-list-models.txt`.
+
+**`opencode models` fails on the invalid user config with exit 1 and stderr.**
+`~/.config/opencode/config.json` is invalid (`mcp.gitnexus` missing `enabled`), so `opencode models`
+exits 1 with the error on stderr and empty stdout. `opencode providers list` exits 0 and lists one
+credential (DeepSeek). The adapter reports the `models` stderr verbatim and stays **unproven** for
+the run path.
+
+---
+
 ## 2026-08-14 — first end-to-end run
 
 Target: a throwaway private repository, one issue, agent `sonnet` at `low` effort, verification

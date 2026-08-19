@@ -40,13 +40,13 @@ impl Harness for Opencode {
                 proven: false,
             },
             Ok(SpawnOutcome::Exited(o)) => Check {
-                available: auth,
+                available: false,
                 models: Vec::new(),
                 error: Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
                 proven: false,
             },
             _ => Check {
-                available: auth,
+                available: false,
                 models: Vec::new(),
                 error: Some("opencode models did not respond".into()),
                 proven: false,

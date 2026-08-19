@@ -149,8 +149,8 @@ fn opencode_reports_its_config_error_verbatim() {
     let h = harness::by_name("opencode").expect("opencode");
     let check = h.check(None);
     assert!(
-        check.available,
-        "providers list succeeded, so credentials exist"
+        !check.available,
+        "a config error makes the adapter unusable"
     );
     assert!(check.models.is_empty());
     assert_eq!(

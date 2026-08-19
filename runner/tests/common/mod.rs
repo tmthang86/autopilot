@@ -41,7 +41,7 @@ pub struct StubGuard {
 
 /// Put the stub directory first on PATH for the lifetime of the returned guard.
 pub fn prepend_stubs() -> StubGuard {
-    let guard = ENV.lock().unwrap();
+    let guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let dir = stub_dir();
     let orig = std::env::var("PATH").unwrap_or_default();
     std::env::set_var("PATH", format!("{}:{}", dir.display(), orig));

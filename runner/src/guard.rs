@@ -144,20 +144,9 @@ fn hhmm(s: &str) -> u32 {
 
 pub fn tiers(cfg: &Config, needed: &[&str]) -> Result<(), GuardOutcome> {
     for name in needed {
-        let (tname, binding) = match crate::tier::resolve(cfg, name, 0) {
-            Ok(pair) => pair,
-            Err(_) => {
-                return Err(GuardOutcome::StandDown(format!(
-                    "tier {name} cannot be resolved"
-                )))
-            }
-        };
-        let available = crate::harness::by_name(&binding.harness)
-            .map(|h| h.available(Some(&binding.model)))
-            .unwrap_or(false);
-        if !available {
+        if !crate::preflight::tier_ok(cfg, name) {
             return Err(GuardOutcome::StandDown(format!(
-                "provider unavailable for tier {tname}"
+                "provider unavailable for tier {name}"
             )));
         }
     }

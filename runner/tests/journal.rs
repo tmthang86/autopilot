@@ -60,9 +60,16 @@ fn a_role_start_with_no_role_end_is_detectable() {
     })
     .expect("append");
     let body = fs::read_to_string(dir.join(".autopilot/journal.jsonl")).expect("read");
-    let starts = body.lines().filter(|l| l.contains("\"role_start\"")).count();
+    let starts = body
+        .lines()
+        .filter(|l| l.contains("\"role_start\""))
+        .count();
     let ends = body.lines().filter(|l| l.contains("\"role_end\"")).count();
-    assert_eq!((starts, ends), (1, 0), "an orphan must be start-without-end");
+    assert_eq!(
+        (starts, ends),
+        (1, 0),
+        "an orphan must be start-without-end"
+    );
 }
 
 #[test]

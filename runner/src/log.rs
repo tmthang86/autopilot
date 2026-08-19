@@ -3,13 +3,15 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-static LOG_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
+static LOG_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 pub fn set_file(path: Option<PathBuf>) {
-    let _ = LOG_FILE.set(path);
+    if let Ok(mut f) = LOG_FILE.lock() {
+        *f = path;
+    }
 }
 
 pub fn unix_now() -> u64 {
@@ -61,13 +63,15 @@ pub fn error(msg: &str) {
 fn emit(level: &str, msg: &str) {
     let line = format!("{} {level} {msg}", timestamp());
     eprintln!("{line}");
-    if let Some(Some(path)) = LOG_FILE.get() {
-        if let Ok(mut fh) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(fh, "{line}");
+    if let Ok(file) = LOG_FILE.lock() {
+        if let Some(path) = file.as_ref() {
+            if let Ok(mut fh) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(fh, "{line}");
+            }
         }
     }
 }

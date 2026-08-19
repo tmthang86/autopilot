@@ -27,7 +27,10 @@ impl fmt::Display for ConfigError {
                 write!(f, "config is not valid: {} ({msg})", path.display())
             }
             ConfigError::UnboundTier(t) => {
-                write!(f, "tier \"{t}\" has no binding in .autopilot/tiers.local.json")
+                write!(
+                    f,
+                    "tier \"{t}\" has no binding in .autopilot/tiers.local.json"
+                )
             }
         }
     }
@@ -76,12 +79,11 @@ impl Config {
         let cfg_path = project.join(".autopilot/config.json");
         let raw = std::fs::read_to_string(&cfg_path)
             .map_err(|_| ConfigError::NotFound(cfg_path.clone()))?;
-        let val: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
-            ConfigError::Invalid {
+        let val: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| ConfigError::Invalid {
                 path: cfg_path.clone(),
                 msg: e.to_string(),
-            }
-        })?;
+            })?;
 
         // The model/effort/budget keys are gone; a config that still carries
         // them must fail loudly, naming what is missing, rather than silently

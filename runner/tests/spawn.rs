@@ -21,7 +21,10 @@ fn captures_stdout_and_stderr() {
 fn a_timeout_kills_the_agents_children_too() {
     let d = tmpdir();
     let pidfile = d.join("pid");
-    let script = format!("sh -c 'sleep 300' & echo $! > {0}; sleep 300", pidfile.display());
+    let script = format!(
+        "sh -c 'sleep 300' & echo $! > {0}; sleep 300",
+        pidfile.display()
+    );
     let mut c = Command::new("sh");
     c.args(["-c", &script]);
     match run_capture(&mut c, b"", 1).expect("run") {

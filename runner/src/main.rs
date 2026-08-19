@@ -2,10 +2,20 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const SUBCOMMANDS: &[&str] = &["run-once", "status", "start", "stop", "install", "preflight"];
+const SUBCOMMANDS: &[&str] = &[
+    "run-once",
+    "status",
+    "start",
+    "stop",
+    "install",
+    "preflight",
+];
 
 fn usage() -> ExitCode {
-    eprintln!("usage: autopilot <{}> --project <path>", SUBCOMMANDS.join("|"));
+    eprintln!(
+        "usage: autopilot <{}> --project <path>",
+        SUBCOMMANDS.join("|")
+    );
     ExitCode::from(1)
 }
 

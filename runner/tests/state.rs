@@ -58,7 +58,11 @@ fn attempts_are_counted_and_evicted() {
     assert_eq!(s.record_attempt(8), 1);
     s.prune_attempts(&[7]);
     assert_eq!(s.attempt_count(7), 2, "an open issue keeps its attempts");
-    assert_eq!(s.attempt_count(8), 0, "a closed issue's attempts are evicted");
+    assert_eq!(
+        s.attempt_count(8),
+        0,
+        "a closed issue's attempts are evicted"
+    );
     s.clear_attempt(7);
     assert_eq!(s.attempt_count(7), 0);
 }

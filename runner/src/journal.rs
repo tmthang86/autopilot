@@ -90,10 +90,7 @@ impl Journal {
                 "ts".into(),
                 serde_json::Value::String(crate::log::timestamp()),
             );
-            o.insert(
-                "wake".into(),
-                serde_json::Value::String(self.wake.clone()),
-            );
+            o.insert("wake".into(), serde_json::Value::String(self.wake.clone()));
         }
         writeln!(self.file, "{v}")?;
         self.file.flush()

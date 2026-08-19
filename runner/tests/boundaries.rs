@@ -10,7 +10,7 @@ fn read_all(dir: &Path, out: &mut Vec<(String, String)>) {
         let p = e.path();
         if p.is_dir() {
             read_all(&p, out);
-        } else if p.extension().map_or(false, |x| x == "rs") {
+        } else if p.extension().is_some_and(|x| x == "rs") {
             if let Ok(s) = fs::read_to_string(&p) {
                 out.push((p.display().to_string(), s));
             }
@@ -34,7 +34,10 @@ fn no_harness_name_outside_the_harness_module() {
         }
         // "pi" is too short to grep for; it is matched as a whole word instead.
         for line in body.lines() {
-            if line.split(|c: char| !c.is_alphanumeric()).any(|w| w == "pi") {
+            if line
+                .split(|c: char| !c.is_alphanumeric())
+                .any(|w| w == "pi")
+            {
                 offenders.push(format!("{path}: pi"));
             }
         }
@@ -51,7 +54,10 @@ fn the_runner_never_references_a_skill_or_the_dashboard() {
     read_all(Path::new("src"), &mut files);
     for (path, body) in &files {
         assert!(!body.contains("skills/"), "{path} references skills/");
-        assert!(!body.contains("dashboard"), "{path} references the dashboard");
+        assert!(
+            !body.contains("dashboard"),
+            "{path} references the dashboard"
+        );
     }
 }
 

@@ -1,7 +1,7 @@
 use autopilot::config::{Config, ConfigError};
 mod common;
-use common::tmpdir;
 use autopilot::tier;
+use common::tmpdir;
 use std::path::Path;
 
 fn write(project: &Path, cfg: &str, bindings: &str) {
@@ -44,7 +44,11 @@ fn loads_two_layers_together() {
 #[test]
 fn a_tier_with_no_binding_is_refused_by_name() {
     let d = tmpdir();
-    write(&d, CFG, r#"{"light": {"harness": "x", "model": "m", "effort": "l"}}"#);
+    write(
+        &d,
+        CFG,
+        r#"{"light": {"harness": "x", "model": "m", "effort": "l"}}"#,
+    );
     match Config::load(&d) {
         Err(ConfigError::UnboundTier(t)) => assert_eq!(t, "standard"),
         other => panic!("expected UnboundTier(standard), got {other:?}"),
@@ -60,7 +64,10 @@ fn an_old_config_fails_loudly_rather_than_running_wrong() {
     );
     write(&d, &cfg, BINDINGS);
     let e = Config::load(&d).expect_err("must not load");
-    assert!(format!("{e}").contains("default_model"), "must name the key: {e}");
+    assert!(
+        format!("{e}").contains("default_model"),
+        "must name the key: {e}"
+    );
 }
 
 #[test]
@@ -121,7 +128,10 @@ fn the_top_tier_offset_by_one_is_itself() {
     let d = tmpdir();
     let c = cfg(&d, &["light", "standard", "deep"]);
     let (name, _) = tier::resolve(&c, "deep", 1).expect("resolves");
-    assert_eq!(name, "deep", "the ladder has a ceiling and must not overflow");
+    assert_eq!(
+        name, "deep",
+        "the ladder has a ceiling and must not overflow"
+    );
 }
 
 #[test]

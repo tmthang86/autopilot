@@ -1,0 +1,35 @@
+//! `gh` as a child process. Every call names the repository explicitly, and a
+//! caller that must react gets gh's stderr back rather than having it discarded.
+
+use std::process::Command;
+
+pub struct GhResult {
+    pub status: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl GhResult {
+    pub fn ok(&self) -> bool {
+        self.status == 0
+    }
+}
+
+pub fn run(args: &[&str], timeout_s: u64) -> std::io::Result<GhResult> {
+    let mut cmd = Command::new("gh");
+    cmd.args(args);
+    match crate::spawn::run_capture(&mut cmd, b"", timeout_s)? {
+        crate::spawn::SpawnOutcome::Exited(o) => Ok(GhResult {
+            status: o.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        }),
+        crate::spawn::SpawnOutcome::TimedOut => Ok(GhResult {
+            status: -1,
+            stdout: String::new(),
+            stderr: "gh timed out".into(),
+        }),
+    }
+}
+
+pub const TIMEOUT_S: u64 = 60;

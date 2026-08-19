@@ -1,5 +1,6 @@
 # Local test scratch
 tests/tmp/
+runner/target/
 *.log
 
 # macOS

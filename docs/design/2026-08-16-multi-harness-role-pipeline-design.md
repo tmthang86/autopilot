@@ -1035,6 +1035,9 @@ Carried forward, and added to:
   until a second harness is measured cheaper at comparable quality on real tasks.
 - **VERDICT:** ENG REVIEW COMPLETE — 16 findings, all decided, **all applied to this document on
   2026-08-18**. Plans 2–4 must be rewritten against decision 26 before execution; plan 1 needs
-  re-approval for its validator change; `runner/run-once.sh:89` needs its live fix in shell.
+  re-approval for its validator change; `runner/run-once.sh:89` needed its live fix in shell —
+  **shipped 2026-08-19**: `_settle_reset` now runs before the work-branch checkout, with a
+  regression test (`tests/test_run_once.sh`) that reproduces a run killed mid-task and asserts its
+  leftover file is discarded, not committed under the next issue.
 
 NO UNRESOLVED DECISIONS

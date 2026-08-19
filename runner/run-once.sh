@@ -86,6 +86,11 @@ export AGENT_MODEL AGENT_EFFORT
 log_info "#$ISSUE will run on $AGENT_MODEL at $AGENT_EFFORT effort"
 
 WORK_BRANCH=$(cfg_get project.work_branch autopilot/main)
+# Reset before checkout, not after. A wake killed mid-run leaves uncommitted
+# files behind, and checkout alone carries them onto whatever task runs next —
+# committed under the wrong issue, with verification green. Reproduced against
+# a real repository on 2026-08-18 (docs/design/2026-08-16-multi-harness-role-pipeline-design.md).
+_settle_reset "$PROJECT"
 git -C "$PROJECT" checkout -q "$WORK_BRANCH" 2>/dev/null ||
     git -C "$PROJECT" checkout -q -b "$WORK_BRANCH"
 

@@ -238,6 +238,34 @@ assert_eq "0" "$([ -f "$AGENT_RAN" ] && echo 1 || echo 0)" "no agent turn is spe
 assert_eq "$tasks_before" "$(jq -r .tasks_today "$repo/.autopilot/state.json")" \
     "an escaping pointer does not count against the daily cap"
 
+# --- a run killed mid-task must not leak its uncommitted files into the next
+# task's commit. run-once.sh used to checkout the work branch without
+# resetting first: if that branch was already checked out (the normal case
+# right after a kill), checkout is a no-op and the leftover file rides along
+# into whatever issue runs next, under the wrong number, with verification
+# green. Reproduced against a real repository on 2026-08-18 (see
+# docs/design/2026-08-16-multi-harness-role-pipeline-design.md). ---
+reset_run_state
+git -C "$repo" checkout -q autopilot/main
+echo "uncommitted work from a killed run" > "$repo/leftover.txt"
+stub_bin gh 'printf "%s\n" "$*" >> "$GH_CALLS"
+case "$1 $2" in
+  "issue list") cat <<JSON
+[{"number":8,"title":"A later task","body":"Intent: docs/plans/0001.md\nCreate marker3.txt","labels":[{"name":"autopilot"}],"milestone":null}]
+JSON
+    ;;
+  *) printf "{}\n" ;;
+esac'
+stub_bin claude 'echo "{\"type\":\"result\",\"is_error\":false}"; echo done > marker3.txt; exit 0'
+: > "$GH_CALLS"
+run; rc=$?
+assert_eq "0" "$rc" "a run following a killed one still exits 0"
+assert_eq "0" "$(git -C "$repo" show --stat HEAD | grep -c leftover.txt || true)" \
+    "the killed run's leftover file is not swept into the next task's commit"
+assert_eq "0" "$([ -f "$repo/leftover.txt" ] && echo 1 || echo 0)" \
+    "the leftover file is gone from the tree, not merely left uncommitted"
+assert_contains "$(git -C "$repo" log -1 --pretty=%B)" "Closes #8" "the new task's own work still lands"
+
 # Skills run when a person is present; the loop runs when nobody is. A loop
 # that could invoke a skill would reach the one capability reserved for
 # supervised moments.

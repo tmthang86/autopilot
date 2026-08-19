@@ -176,6 +176,12 @@ impl Queue {
             .unwrap_or_default()
     }
 
+    /// The issues this load actually saw open, for pruning per-issue state
+    /// that no longer has a live issue behind it (decision 36).
+    pub fn open_issue_numbers(&self) -> Vec<u64> {
+        self.cache.iter().map(|i| i.number).collect()
+    }
+
     pub fn claim(&self, issue: u64) -> Result<(), String> {
         crate::queue_helpers::edit_claim_label(&self.repo, issue, "--add-label", "claim")
     }

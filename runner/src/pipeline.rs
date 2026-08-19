@@ -24,6 +24,18 @@ pub struct Task<'a> {
     pub intent: Vec<PathBuf>,
 }
 
+/// Checked immediately before a role starts (decision 33): a role cut off
+/// mid-run forges an orphaned journal entry.
+macro_rules! budget_gate {
+    ($cfg:ident, $project:ident, $queue:ident, $issue:expr, $started:ident, $before:literal) => {
+        if let Some(o) = crate::pipeline_implement::check_budget(
+            $cfg, $project, $queue, $issue, &$started, $before,
+        ) {
+            return o;
+        }
+    };
+}
+
 pub fn run(
     cfg: &Config,
     project: &Path,
@@ -37,26 +49,11 @@ pub fn run(
     let attempt = state.attempt_count(task.issue);
     let task_branch = format!("autopilot/task-{}", task.issue);
 
-    let review_tier = match crate::tier::resolve(cfg, task.tier, cfg.roles.review.tier_offset) {
-        Ok((n, _)) => n.to_string(),
-        Err(_) => return pause(project, queue, task.issue, "review tier cannot be resolved"),
-    };
-    let test_tier = match crate::tier::resolve(cfg, task.tier, cfg.roles.test.tier_offset) {
-        Ok((n, _)) => n.to_string(),
-        Err(_) => return pause(project, queue, task.issue, "test tier cannot be resolved"),
-    };
-
-    crate::settle::reset(project, "HEAD");
-    if !crate::settle::checkout_task_branch(project, task.issue) {
-        return pause(
-            project,
-            queue,
-            task.issue,
-            "could not create the task branch",
-        );
-    }
-    let start_sha = crate::settle::start_sha(project);
-
+    let (review_tier, test_tier, start_sha) =
+        match crate::pipeline_implement::setup(cfg, project, queue, task) {
+            Ok(v) => v,
+            Err(o) => return o,
+        };
     if let Some(outcome) = implement_or_continue(
         cfg,
         state,
@@ -75,7 +72,7 @@ pub fn run(
     let mut round = 0u32;
     loop {
         if crate::pipeline_implement::budget_exhausted(cfg, &started) {
-            return pause(project, queue, task.issue, "wake budget exhausted");
+            return pause(cfg, project, queue, task.issue, "wake budget exhausted");
         }
         if let Err(f) = crate::verify::run(cfg, project) {
             crate::log::warn(&format!(
@@ -99,6 +96,7 @@ pub fn run(
             continue;
         }
 
+        budget_gate!(cfg, project, queue, task.issue, started, "the tester");
         match run_tester(
             cfg,
             project,
@@ -125,7 +123,7 @@ pub fn run(
             Tester::Reject(v) => {
                 round += 1;
                 if round > cfg.pipeline.max_rounds {
-                    return pause(project, queue, task.issue, "rounds exhausted");
+                    return pause(cfg, project, queue, task.issue, "rounds exhausted");
                 }
                 journal
                     .append(Event::Verdict {
@@ -135,6 +133,7 @@ pub fn run(
                         reason: v.reason,
                     })
                     .ok();
+                budget_gate!(cfg, project, queue, task.issue, started, "the reviewer");
                 match run_reviewer(
                     cfg,
                     project,

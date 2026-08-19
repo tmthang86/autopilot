@@ -25,19 +25,53 @@ pub fn reset(project: &Path, sha: &str) {
     let _ = crate::git::run(project, &["clean", "-qfd", "-e", ".autopilot"], 120);
 }
 
-pub fn checkout_task_branch(project: &Path, issue: u64) -> bool {
-    let branch = format!("autopilot/task-{issue}");
-    checkout(project, "-B", &branch)
+/// Checked before every write, not assumed (Rule Zero): refuses if HEAD is on
+/// the project's real main branch, or the branch could not be read at all.
+fn guard_not_main(project: &Path, main_branch: &str) -> bool {
+    let cur = current_branch(project);
+    if cur == main_branch || cur == "unknown" {
+        crate::log::error(&format!(
+            "refusing to write: current branch is [{cur}], not a task or accumulation branch"
+        ));
+        return false;
+    }
+    true
 }
 
-pub fn checkout(project: &Path, flag: &str, branch: &str) -> bool {
+/// Creates `branch` from `start_point` if it does not already exist. The
+/// accumulation branch has no install-time step that creates it — a fresh
+/// project reaches this before its first task, same as the shell runner's
+/// `checkout || checkout -b` did for `work_branch`.
+pub fn ensure_branch(project: &Path, branch: &str, start_point: &str) -> bool {
+    let exists = crate::git::run(project, &["rev-parse", "--verify", "--quiet", branch], 30)
+        .map(|o| o.status == 0)
+        .unwrap_or(false);
+    if exists {
+        return true;
+    }
+    crate::git::run(project, &["branch", branch, start_point], 60)
+        .map(|o| o.status == 0)
+        .unwrap_or(false)
+}
+
+/// Ensures the accumulation branch exists, then checks out a fresh task
+/// branch from it.
+pub fn start_task_branch(project: &Path, issue: u64, main_branch: &str, work_branch: &str) -> bool {
+    if !ensure_branch(project, work_branch, main_branch) {
+        return false;
+    }
+    let branch = format!("autopilot/task-{issue}");
+    checkout(project, "-B", &branch, work_branch)
+}
+
+pub fn checkout(project: &Path, flag: &str, branch: &str, start_point: &str) -> bool {
     let mut args = vec!["checkout"];
     if !flag.is_empty() {
         args.push(flag);
     }
     args.push(branch);
     if flag == "-B" {
-        args.push("autopilot/main");
+        args.push(start_point);
     }
     crate::git::run(project, &args, 120)
         .map(|o| o.status == 0)
@@ -48,6 +82,14 @@ pub fn rebase_onto(project: &Path, onto: &str) -> bool {
     crate::git::run(project, &["rebase", onto], 300)
         .map(|o| o.status == 0)
         .unwrap_or(false)
+}
+
+/// A conflicted rebase leaves `.git/rebase-merge` behind. Left alone, every
+/// later task fails immediately with git's own "a rebase is already in
+/// progress" — one real conflict wedges every task after it, not just the one
+/// that hit it.
+pub fn rebase_abort(project: &Path) {
+    let _ = crate::git::run(project, &["rebase", "--abort"], 60);
 }
 
 pub fn merge_ff(project: &Path, branch: &str) -> bool {
@@ -84,7 +126,10 @@ pub fn commit(project: &Path, message: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn commit_if_dirty(project: &Path, title: &str, issue: u64) -> bool {
+pub fn commit_if_dirty(project: &Path, title: &str, issue: u64, main_branch: &str) -> bool {
+    if !guard_not_main(project, main_branch) {
+        return false;
+    }
     if !stage_all(project) {
         return false;
     }
@@ -98,7 +143,10 @@ pub fn commit_if_dirty(project: &Path, title: &str, issue: u64) -> bool {
     commit(project, &message)
 }
 
-pub fn commit_wip(project: &Path, issue: u64) -> bool {
+pub fn commit_wip(project: &Path, issue: u64, main_branch: &str, work_branch: &str) -> bool {
+    if !guard_not_main(project, main_branch) {
+        return false;
+    }
     if !stage_all(project) {
         return false;
     }
@@ -106,50 +154,7 @@ pub fn commit_wip(project: &Path, issue: u64) -> bool {
         return true;
     }
     let message = format!(
-        "WIP: unverified work for issue #{issue}\n\nPaused for a coordinator. This commit has NOT passed the project's\nverification commands and must not be merged to autopilot/main."
+        "WIP: unverified work for issue #{issue}\n\nPaused for a coordinator. This commit has NOT passed the project's\nverification commands and must not be merged to {work_branch}."
     );
     commit(project, &message)
-}
-
-pub fn comment(repo: &str, issue: u64, body: &str) -> bool {
-    crate::gh::run(
-        &[
-            "issue",
-            "comment",
-            &issue.to_string(),
-            "--repo",
-            repo,
-            "--body",
-            body,
-        ],
-        crate::gh::TIMEOUT_S,
-    )
-    .map(|o| o.ok())
-    .unwrap_or(false)
-}
-
-pub fn add_label(repo: &str, issue: u64, label: &str) -> bool {
-    crate::gh::run(
-        &[
-            "issue",
-            "edit",
-            &issue.to_string(),
-            "--repo",
-            repo,
-            "--add-label",
-            label,
-        ],
-        crate::gh::TIMEOUT_S,
-    )
-    .map(|o| o.ok())
-    .unwrap_or(false)
-}
-
-pub fn close(repo: &str, issue: u64) -> bool {
-    crate::gh::run(
-        &["issue", "close", &issue.to_string(), "--repo", repo],
-        crate::gh::TIMEOUT_S,
-    )
-    .map(|o| o.ok())
-    .unwrap_or(false)
 }

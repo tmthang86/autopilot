@@ -43,6 +43,18 @@ check_task() {
     # earlier task creates, or one a prerequisite plan creates. Existence is
     # therefore checked against the repository PLUS everything CREATED holds.
     _intent=$(printf '%s\n' "$BUF" | sed -n 's/^.*\*\*Intent:\*\*//p')
+    # The field-presence loop above only checks the label is there; a task
+    # copied from the template and left with "**Intent:**" and nothing after
+    # it passes that check and reaches here with $_intent empty — exactly the
+    # shape the real runner refuses at claim time (ADR-0005), so it must not
+    # validate clean.
+    case "$_intent" in
+        *[!\ ]*) ;;
+        *)
+            printf '%s: **Intent:** is present but names no file\n' "$TASK"
+            PROBLEMS=$((PROBLEMS + 1))
+            ;;
+    esac
     for _p in $_intent; do
         case "$_p" in
             —|-|*[!a-zA-Z0-9._/-]*) continue ;;

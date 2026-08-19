@@ -38,6 +38,18 @@ fn begin(cmd: &mut Command, stdin: Stdio, stdout: Stdio, stderr: Stdio) -> io::R
     cmd.stdin(stdin).stdout(stdout).stderr(stderr).spawn()
 }
 
+/// Writes stdin on its own thread instead of blocking the caller. `wait`'s
+/// deadline is the only place a timeout is enforced, and it only starts after
+/// this call returns — a synchronous `write_all` on a prompt bigger than the
+/// OS pipe buffer, into a child slow to read it, would block here with no
+/// deadline active at all (the exact hang class measured for `lms ls` on
+/// 2026-08-16, just moved earlier).
+fn spawn_stdin_writer(mut si: std::process::ChildStdin, data: Vec<u8>) {
+    std::thread::spawn(move || {
+        let _ = si.write_all(&data);
+    });
+}
+
 struct Reader {
     handle: Option<std::thread::JoinHandle<Vec<u8>>>,
 }
@@ -87,8 +99,8 @@ fn wait(child: &mut Child, timeout_s: u64) -> io::Result<bool> {
 /// capturing both stdout and stderr. Used by `gh`, `git`, and `verify`.
 pub fn run_capture(cmd: &mut Command, stdin: &[u8], timeout_s: u64) -> io::Result<SpawnOutcome> {
     let mut child = begin(cmd, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
-    if let Some(mut si) = child.stdin.take() {
-        let _ = si.write_all(stdin);
+    if let Some(si) = child.stdin.take() {
+        spawn_stdin_writer(si, stdin.to_vec());
     }
     let out = child.stdout.take().map(Reader::new);
     let err = child.stderr.take().map(Reader::new);
@@ -122,8 +134,8 @@ pub fn run_to_file(
         Stdio::from(file.try_clone()?),
         Stdio::from(file),
     )?;
-    if let Some(mut si) = child.stdin.take() {
-        let _ = si.write_all(stdin);
+    if let Some(si) = child.stdin.take() {
+        spawn_stdin_writer(si, stdin.to_vec());
     }
     let timed_out = wait(&mut child, timeout_s)?;
     if timed_out {

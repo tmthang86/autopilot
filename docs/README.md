@@ -41,8 +41,8 @@ than an honest gap.
 | [plans/2026-08-15-project-bootstrap.md](plans/2026-08-15-project-bootstrap.md) | ⚠️ Superseded by the skill-layer design |
 | [plans/2026-08-15-skill-layer.md](plans/2026-08-15-skill-layer.md) | ✅ Delivered |
 | [plans/2026-08-16-rust-runner.md](plans/2026-08-16-rust-runner.md) | 📝 Implemented — real run and cutover pending |
-| [plans/2026-08-16-deliver-preflight.md](plans/2026-08-16-deliver-preflight.md) | 📝 Implemented |
-| [plans/2026-08-16-dashboard.md](plans/2026-08-16-dashboard.md) | ✅ Delivered |
+| [plans/2026-08-16-deliver-preflight.md](plans/2026-08-16-deliver-preflight.md) | 📝 Implemented — never run against the machine as-is |
+| [plans/2026-08-16-dashboard.md](plans/2026-08-16-dashboard.md) | 📝 Implemented — exercised against fixtures only, never a real running process |
 | [plans/2026-08-16-planning-skill.md](plans/2026-08-16-planning-skill.md) | 📝 Implemented — end-to-end run pending |
 | [product/open-items.md](product/open-items.md) | ✅ Current |
 

@@ -8,15 +8,35 @@ use crate::pipeline::{Outcome, Task};
 use crate::queue::Queue;
 use crate::state::State;
 
-pub fn pause(project: &Path, queue: &Queue, issue: u64, reason: &str) -> Outcome {
-    crate::settle::commit_wip(project, issue);
-    crate::settle::push_head(project);
-    crate::settle::comment(
+pub fn pause(cfg: &Config, project: &Path, queue: &Queue, issue: u64, reason: &str) -> Outcome {
+    let committed = crate::settle::commit_wip(
+        project,
+        issue,
+        &cfg.project.main_branch,
+        &cfg.project.work_branch,
+    );
+    let pushed = committed && crate::settle::push_head(project);
+    // Never claim "safely parked" when it might not be on disk or the remote —
+    // a paused task is only resumable from what actually landed.
+    let status = if pushed {
+        "This commit was pushed to the remote."
+    } else if committed {
+        crate::log::error(&format!(
+            "#{issue} paused but the WIP commit could not be pushed — the work exists only on this machine"
+        ));
+        "The work is committed locally but could NOT be pushed to the remote; it exists only on this machine."
+    } else {
+        crate::log::error(&format!(
+            "#{issue} paused but nothing could be committed — no work was saved"
+        ));
+        "The attempted work could NOT be committed; nothing was saved."
+    };
+    crate::gh::comment(
         &queue.repo,
         issue,
-        &format!("Blocked — this needs a decision:\n\n{reason}"),
+        &format!("Blocked — this needs a decision:\n\n{reason}\n\n{status}"),
     );
-    crate::settle::add_label(&queue.repo, issue, "blocked");
+    crate::gh::add_label(&queue.repo, issue, "blocked");
     release(queue, issue);
     crate::log::info(&format!("#{issue} paused: {reason}"));
     Outcome::Paused
@@ -38,6 +58,7 @@ pub fn fail(
     state.save().ok();
     if n >= cfg.pacing.max_attempts_per_issue {
         return pause(
+            cfg,
             project,
             queue,
             task.issue,
@@ -49,7 +70,7 @@ pub fn fail(
     }
     crate::settle::reset(project, start_sha);
     crate::settle::delete_branch(project, task_branch);
-    crate::settle::comment(
+    crate::gh::comment(
         &queue.repo,
         task.issue,
         &format!(

@@ -33,3 +33,46 @@ pub fn run(args: &[&str], timeout_s: u64) -> std::io::Result<GhResult> {
 }
 
 pub const TIMEOUT_S: u64 = 60;
+
+pub fn comment(repo: &str, issue: u64, body: &str) -> bool {
+    run(
+        &[
+            "issue",
+            "comment",
+            &issue.to_string(),
+            "--repo",
+            repo,
+            "--body",
+            body,
+        ],
+        TIMEOUT_S,
+    )
+    .map(|o| o.ok())
+    .unwrap_or(false)
+}
+
+pub fn add_label(repo: &str, issue: u64, label: &str) -> bool {
+    run(
+        &[
+            "issue",
+            "edit",
+            &issue.to_string(),
+            "--repo",
+            repo,
+            "--add-label",
+            label,
+        ],
+        TIMEOUT_S,
+    )
+    .map(|o| o.ok())
+    .unwrap_or(false)
+}
+
+pub fn close(repo: &str, issue: u64) -> bool {
+    run(
+        &["issue", "close", &issue.to_string(), "--repo", repo],
+        TIMEOUT_S,
+    )
+    .map(|o| o.ok())
+    .unwrap_or(false)
+}

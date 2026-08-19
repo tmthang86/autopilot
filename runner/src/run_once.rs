@@ -57,6 +57,7 @@ pub fn run(project: &Path) -> ExitCode {
     };
 
     queue.load(&cfg);
+    state.prune_attempts(&queue.open_issue_numbers());
     let Some(issue) = queue.pick(&cfg) else {
         crate::log::info("queue is empty");
         stood_down(&mut journal, None, None);
@@ -72,7 +73,7 @@ pub fn run(project: &Path) -> ExitCode {
         Err(e) => {
             crate::log::error(&e.to_string());
             crate::settle::reset(project, "HEAD");
-            crate::settle::comment(
+            crate::gh::comment(
                 &queue.repo,
                 issue,
                 &format!(
@@ -80,7 +81,7 @@ pub fn run(project: &Path) -> ExitCode {
                     cfg.queue.intent_marker
                 ),
             );
-            crate::settle::add_label(&queue.repo, issue, "blocked");
+            crate::gh::add_label(&queue.repo, issue, "blocked");
             stood_down(&mut journal, Some(issue), None);
             return ExitCode::SUCCESS;
         }
@@ -142,7 +143,6 @@ pub fn run(project: &Path) -> ExitCode {
         intent,
     };
     let outcome = pipeline::run(&cfg, project, &queue, &task, &mut journal, &mut state);
-
     match outcome {
         pipeline::Outcome::Merged => {
             let _ = journal.append(Event::WakeEnd {

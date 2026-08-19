@@ -40,3 +40,24 @@ fn a_timeout_kills_the_agents_children_too() {
     let alive = unsafe { libc::kill(pid, 0) == 0 };
     assert!(!alive, "the forked child must die with its parent");
 }
+
+#[test]
+fn a_large_unread_stdin_does_not_delay_the_timeout() {
+    // Bigger than any OS pipe buffer, fed to a child that never reads it. A
+    // synchronous write_all() before wait() starts its deadline would block
+    // here for as long as the child lives, with no timeout active at all —
+    // wait()'s clock must start regardless of how the write is going.
+    let big = vec![b'x'; 4 * 1024 * 1024];
+    let mut c = Command::new("sh");
+    c.args(["-c", "sleep 300"]);
+    let start = std::time::Instant::now();
+    match run_capture(&mut c, &big, 1).expect("run") {
+        SpawnOutcome::TimedOut => {}
+        SpawnOutcome::Exited(o) => panic!("expected timeout, got {:?}", o.status),
+    }
+    assert!(
+        start.elapsed().as_secs() < 5,
+        "the timeout must fire near the configured deadline even with a large, unread stdin: took {:?}",
+        start.elapsed()
+    );
+}

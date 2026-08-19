@@ -14,6 +14,8 @@ is recorded here in the same commit.
 | Intent binding end to end against the real agent | 2026-08-15 | One issue with a valid `Intent:` line through the throwaway repository, confirming the transcript shows the plan was read before code was written |
 | The throttled `rate_limit_event` payload | 2026-08-14 | Observe a real throttle and record the payload verbatim |
 | A real three-role run through the Rust runner against a real harness | 2026-08-19 | One issue with a `tier:` label run implement → test → review, verification green, issue closed |
+| `autopilot preflight` against the machine as-is, twice, with the second run fixing what the first found | 2026-08-19 | Run it, fix whatever it reports, run it again clean |
+| The dashboard against a real running project, not fixture journals | 2026-08-19 | Point it at a project mid-run and confirm orphans, in-flight roles, and cost figures match what actually happened |
 
 ## Open questions
 

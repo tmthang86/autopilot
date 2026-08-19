@@ -63,10 +63,20 @@ func buildViews(jobs string) []ProjectView {
 			if _, err := os.Stat(filepath.Join(p.Path, ".autopilot/STOP")); err == nil {
 				v.STOP = true
 			}
-			if evs, err := readJournal(p.Path); err == nil {
+			evs, err := readJournal(p.Path)
+			switch {
+			case err == nil:
 				v.Orphans = Orphans(evs, time.Now())
 				v.Cost = CostByTier(evs)
 				v.InFlight = inFlight(evs)
+			case os.IsNotExist(err):
+				// No task has run yet; an empty view is the honest one.
+			default:
+				// A parse error is exactly the kind of "wrong in either
+				// direction" status this dashboard exists to avoid — showing
+				// nothing here would hide the same orphan detection the
+				// overview's headline feature depends on.
+				v.Err = err.Error()
 			}
 		}
 		views = append(views, v)
@@ -83,11 +93,15 @@ func readJournal(path string) ([]Event, error) {
 	return ParseJournal(f)
 }
 
+// inFlight counts started-but-not-ended roles. Keyed the same way Orphans is
+// (wake, role, round, lens) — a coarser wake+role key collapses a role's
+// second round onto its first, so a still-running round 2 reads as not in
+// flight once round 1's role_end has already landed.
 func inFlight(evs []Event) int {
-	started := map[string]bool{}
-	ended := map[string]bool{}
+	started := map[roleKey]bool{}
+	ended := map[roleKey]bool{}
 	for _, ev := range evs {
-		k := ev.Wake + ev.Role
+		k := roleKey{ev.Wake, ev.Role, ev.Round, ev.Lens}
 		if ev.Event == "role_start" {
 			started[k] = true
 		}

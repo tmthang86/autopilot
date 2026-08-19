@@ -84,6 +84,27 @@ out=$(sh "$V" "$WORK/ghost.md" "$WORK" 2>&1); rc=$?
 assert_eq "1" "$rc" "an Intent naming a missing file fails"
 assert_contains "$out" "does-not-exist.md" "the missing intent file is named"
 
+# The label present, nothing after it — a plausible slip copying the
+# template under time pressure. The runner refuses this exact task at claim
+# time (ADR-0005); the validator must not call it clean.
+cat > "$WORK/empty-intent.md" <<'EOF'
+# A plan
+
+## Work breakdown
+
+### Task 1: Do the thing
+- **Done when:** the thing is done
+- **Verify:** `sh tests/run.sh` → ALL PASS
+- **Intent:**
+- **Depends on:** —
+- **Tier:** standard
+- **Needs human:** no
+EOF
+
+out=$(sh "$V" "$WORK/empty-intent.md" "$WORK" 2>&1); rc=$?
+assert_eq "1" "$rc" "an Intent field with no path after it fails"
+assert_contains "$out" "names no file" "the empty Intent is named as the problem"
+
 # A heading inside a fence is not a task.
 cat > "$WORK/fenced.md" <<'EOF'
 # A plan that shows the template

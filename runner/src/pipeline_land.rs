@@ -30,7 +30,7 @@ pub fn finish(
 ) -> Outcome {
     for lens in &cfg.pipeline.review_lenses {
         if budget_exhausted(cfg, started) {
-            return pause(project, queue, task.issue, "wake budget exhausted");
+            return pause(cfg, project, queue, task.issue, "wake budget exhausted");
         }
         match run_reviewer(
             cfg,
@@ -81,6 +81,7 @@ pub fn finish(
         };
         if !verdict.is_pass() {
             return pause(
+                cfg,
                 project,
                 queue,
                 task.issue,
@@ -89,12 +90,18 @@ pub fn finish(
         }
     }
 
-    if !crate::settle::rebase_onto(project, "autopilot/main") {
+    let work_branch = &cfg.project.work_branch;
+    if !crate::settle::rebase_onto(project, work_branch) {
+        // A conflicted rebase leaves .git/rebase-merge behind; every later
+        // task would otherwise fail immediately with git's own "a rebase is
+        // already in progress", not just this one.
+        crate::settle::rebase_abort(project);
         return pause(
+            cfg,
             project,
             queue,
             task.issue,
-            "rebase conflict onto autopilot/main",
+            &format!("rebase conflict onto {work_branch}"),
         );
     }
     if let Err(f) = crate::verify::run(cfg, project) {
@@ -110,7 +117,7 @@ pub fn finish(
             &f.output,
         );
     }
-    if !crate::settle::commit_if_dirty(project, task.title, task.issue) {
+    if !crate::settle::commit_if_dirty(project, task.title, task.issue, &cfg.project.main_branch) {
         return fail(
             cfg,
             state,
@@ -123,8 +130,9 @@ pub fn finish(
             "staging failed",
         );
     }
-    if !crate::settle::checkout(project, "", "autopilot/main") {
+    if !crate::settle::checkout(project, "", work_branch, "") {
         return pause(
+            cfg,
             project,
             queue,
             task.issue,
@@ -133,6 +141,7 @@ pub fn finish(
     }
     if !crate::settle::merge_ff(project, task_branch) {
         return pause(
+            cfg,
             project,
             queue,
             task.issue,
@@ -141,7 +150,7 @@ pub fn finish(
     }
     if !crate::settle::push_head(project) {
         let _ = queue.release(task.issue);
-        crate::settle::comment(
+        crate::gh::comment(
             &queue.repo,
             task.issue,
             "Implementation finished and verification passed, but pushing to the remote failed. The work exists only on this machine. Leaving this issue open.",
@@ -152,19 +161,19 @@ pub fn finish(
     let prepare_only = queue.has_label(task.issue, &cfg.autonomy.prepare_only_label);
     let _ = queue.release(task.issue);
     if prepare_only {
-        crate::settle::add_label(&queue.repo, task.issue, &cfg.autonomy.prepare_only_label);
-        crate::settle::comment(
+        crate::gh::add_label(&queue.repo, task.issue, &cfg.autonomy.prepare_only_label);
+        crate::gh::comment(
             &queue.repo,
             task.issue,
             "Implementation complete and the automated checks passed. This task's correctness depends on behaviour a person has to observe, so it stays open for human acceptance.",
         );
     } else {
-        crate::settle::comment(
+        crate::gh::comment(
             &queue.repo,
             task.issue,
             "Completed automatically. Verification passed and the work is committed.",
         );
-        if !crate::settle::close(&queue.repo, task.issue) {
+        if !crate::gh::close(&queue.repo, task.issue) {
             crate::log::error(&format!(
                 "#{} could NOT be closed — its work is verified and pushed; close it by hand",
                 task.issue
@@ -173,6 +182,7 @@ pub fn finish(
     }
 
     crate::settle::delete_branch(project, task_branch);
+    state.clear_attempt(task.issue);
     crate::log::info(&format!("#{} merged", task.issue));
     Outcome::Merged
 }

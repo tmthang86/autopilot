@@ -177,6 +177,68 @@ echo '{"type":"result","is_error":false}'; echo junk > should-not-land.txt; exit
 }
 
 #[test]
+fn a_fresh_project_with_no_accumulation_branch_still_completes_a_task() {
+    // Unlike setup_repo(), this never pre-creates `autopilot/main` — a real
+    // `autopilot install` + `autopilot start` never did either. Before the
+    // fix, checkout_task_branch's `-B ... autopilot/main` failed on exactly
+    // this, forever, on every genuinely fresh project.
+    let _g = prepend_stubs();
+    let repo = common::make_repo();
+    let remotedir = common::tmpdir();
+    let bare = remotedir.join("remote.git");
+    std::process::Command::new("git")
+        .args(["init", "--bare", "-q"])
+        .arg(&bare)
+        .status()
+        .expect("bare");
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["remote", "add", "origin"])
+        .arg(&bare)
+        .status()
+        .expect("remote");
+    std::fs::create_dir_all(repo.join("docs/plans")).expect("mkdir");
+    std::fs::write(repo.join("docs/plans/0001.md"), "the plan").expect("plan");
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["add", "-A"])
+        .status()
+        .expect("add");
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["commit", "-q", "-m", "plan"])
+        .status()
+        .expect("commit");
+    assert!(
+        !std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["rev-parse", "--verify", "--quiet", "autopilot/main"])
+            .status()
+            .expect("check")
+            .success(),
+        "this fixture must not carry the accumulation branch before the run"
+    );
+
+    write_project(&repo, r#"[{"name":"t","cmd":"true"}]"#, "[]");
+    std::env::set_var("GH_CALLS", repo.join("gh-calls.txt"));
+    std::env::set_var("CLAUDE_STDIN", repo.join("stdin.txt"));
+    set_stub("gh", GH_HAPPY);
+    set_stub("claude", CLAUDE_HAPPY);
+
+    assert_eq!(run_once::run(&repo), ExitCode::SUCCESS);
+
+    let calls = std::fs::read_to_string(repo.join("gh-calls.txt")).expect("calls");
+    assert!(
+        calls.contains("issue close 5"),
+        "a fresh project must still complete and close its first task: {calls}"
+    );
+}
+
+#[test]
 fn usage_exhaustion_consumes_no_retry() {
     let _g = prepend_stubs();
     let repo = setup_repo();

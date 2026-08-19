@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>autopilot</title><script src="/htmx.min.js" defer></script></head>
+<body>
+<h1>autopilot</h1>
+<div id="live" hx-get="/fragment/live" hx-trigger="every 10s" hx-swap="outerHTML">
+  <section id="orphans">
+    <h2>orphaned roles</h2>
+    {{if .Orphans}}
+      <ul>
+        {{range .Orphans}}<li>{{.Role}}{{if .Lens}} ({{.Lens}}){{end}} · wake {{.Wake}} · {{.Age}}</li>{{end}}
+      </ul>
+    {{else}}<p>none</p>{{end}}
+  </section>
+  <section id="cost-by-tier">
+    <h2>cost by tier</h2>
+    <table>
+      {{range $tier, $cost := .Cost}}
+      <tr><td>{{$tier}}</td><td>reported {{$cost.Reported}}</td><td>unknown {{$cost.UnknownCount}}</td></tr>
+      {{end}}
+    </table>
+  </section>
+  <section id="projects">
+    <h2>projects</h2>
+    <table>
+      {{range .Projects}}
+      <tr>
+        <td><a href="/project/{{.Label}}">{{.Label}}</a></td>
+        <td>{{if .Loaded}}loaded{{else}}not loaded{{end}}</td>
+        <td>runs {{.Runs}}</td>
+        <td>last exit {{.LastExit}}</td>
+        <td>{{if .STOP}}STOP{{end}}</td>
+        {{if and .Loaded (eq .Runs 0)}}<td>loaded but has never run</td>{{end}}
+        {{if .Err}}<td>error: {{.Err}}</td>{{end}}
+      </tr>
+      {{end}}
+    </table>
+  </section>
+</div>
+</body>
+</html>

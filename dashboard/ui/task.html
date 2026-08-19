@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>task</title></head>
+<body>
+<h1>task</h1>
+<table>
+{{range .}}
+  <tr>
+    <td>{{.TS}}</td>
+    <td>{{.Event}}</td>
+    <td>{{.Role}}</td>
+    <td>{{if .Lens}}{{.Lens}}{{end}}</td>
+    <td>{{.Tier}}</td>
+    <td>{{if .CostUSD}}{{.CostUSD}} ({{.CostSource}}){{end}}</td>
+    <td>{{.Verdict}}</td>
+    <td>{{.Reason}}</td>
+    <td>{{.Result}}{{.Failed}}{{.Outcome}}</td>
+  </tr>
+{{end}}
+</table>
+</body>
+</html>

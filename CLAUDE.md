@@ -14,6 +14,10 @@ agent's permission checks disabled. That single fact drives every rule below.
 **The operator must be able to read this entire codebase in one sitting.** If a change makes
 that harder, the change is wrong even if it works.
 
+The runner runs unsupervised and obeys this section absolutely. The **dashboard** is an optional tool
+that runs only when a person is present, is read-only, and the runner never knows it exists. Its
+dependency budget is separate and its failure cannot affect a scheduled run.
+
 | Constraint | Why |
 |---|---|
 | Rust, with a dependency tree an operator can enumerate (`serde`, `serde_json`, `time`, `libc` only). `git` and `gh` remain child processes | Anything the operator has to trust but cannot read is a liability |

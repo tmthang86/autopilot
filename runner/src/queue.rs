@@ -165,11 +165,15 @@ impl Queue {
     }
 
     pub fn has_label(&self, issue: u64, label: &str) -> bool {
+        self.labels(issue).iter().any(|l| l == label)
+    }
+
+    pub fn labels(&self, issue: u64) -> Vec<String> {
         self.cache
             .iter()
             .find(|i| i.number == issue)
-            .map(|i| i.labels.iter().any(|l| l == label))
-            .unwrap_or(false)
+            .map(|i| i.labels.clone())
+            .unwrap_or_default()
     }
 
     pub fn claim(&self, issue: u64) -> Result<(), String> {

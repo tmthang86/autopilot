@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{{LABEL}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{RUNNER}}</string>
+    <string>run-once</string>
+    <string>--project</string>
+    <string>{{PROJECT}}</string>
+  </array>
+
+  <!-- No RunAtLoad: the loop runs only in a session the operator started.
+       See docs/decisions/0002-off-until-explicitly-started.md. -->
+  <key>StartInterval</key><integer>{{INTERVAL}}</integer>
+
+  <key>StandardOutPath</key><string>{{PROJECT}}/.autopilot/logs/launchd.out</string>
+  <key>StandardErrorPath</key><string>{{PROJECT}}/.autopilot/logs/launchd.err</string>
+
+  <!-- launchd jobs inherit no login shell, so PATH is set explicitly. Without
+       this, gh and git are simply absent and the failure presents as a queue
+       that is permanently empty. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{{HOME}}/.local/bin</string>
+    <key>HOME</key><string>{{HOME}}</string>
+  </dict>
+</dict>
+</plist>

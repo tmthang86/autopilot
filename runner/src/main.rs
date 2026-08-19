@@ -11,23 +11,20 @@ const SUBCOMMANDS: &[&str] = &[
     "preflight",
 ];
 
-fn usage() -> ExitCode {
-    eprintln!(
-        "usage: autopilot <{}> --project <path>",
-        SUBCOMMANDS.join("|")
-    );
-    ExitCode::from(1)
-}
-
 fn main() -> ExitCode {
     let mut project: Option<PathBuf> = None;
     let mut subcommand: Option<String> = None;
+    let mut interval: u64 = 2100;
 
     let mut args = env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--project" => match args.next() {
                 Some(p) => project = Some(PathBuf::from(p)),
+                None => return usage(),
+            },
+            "--interval" => match args.next().and_then(|n| n.parse().ok()) {
+                Some(n) => interval = n,
                 None => return usage(),
             },
             s if SUBCOMMANDS.contains(&s) => subcommand = Some(s.to_string()),
@@ -38,8 +35,29 @@ fn main() -> ExitCode {
         }
     }
 
-    match (subcommand.as_deref(), project) {
-        (Some("run-once"), Some(_)) => ExitCode::SUCCESS,
+    let (Some(sub), Some(project)) = (subcommand, project) else {
+        return usage();
+    };
+    let code = match sub.as_str() {
+        "run-once" => autopilot::run_once::run(&project),
+        "status" => ExitCode::from(autopilot::ctl::status(&project) as u8),
+        "start" => ExitCode::from(autopilot::ctl::start(&project) as u8),
+        "stop" => ExitCode::from(autopilot::ctl::stop(&project) as u8),
+        "install" => ExitCode::from(autopilot::install::run(&project, interval) as u8),
+        "preflight" => {
+            let report = autopilot::preflight::run(&project);
+            autopilot::preflight::print(&report);
+            ExitCode::SUCCESS
+        }
         _ => usage(),
-    }
+    };
+    code
+}
+
+fn usage() -> ExitCode {
+    eprintln!(
+        "usage: autopilot <{}> --project <path> [--interval <seconds>]",
+        SUBCOMMANDS.join("|")
+    );
+    ExitCode::from(1)
 }

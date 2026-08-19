@@ -7,14 +7,29 @@
   "queue": {
     "ready_label": "autopilot",
     "exclude_labels": ["blocked", "needs-human", "status:in-progress"],
-    "intent_marker": "Intent:"
+    "intent_marker": "Intent:",
+    "tier_label_prefix": "tier:"
+  },
+  "tiers": ["light", "standard", "deep"],
+  "roles": {
+    "context_docs": ["CLAUDE.md"],
+    "implement": {"tier_offset": 0},
+    "test": {"tier_offset": 0},
+    "review": {"tier_offset": 1}
+  },
+  "pipeline": {
+    "max_rounds": 2,
+    "turn_timeout_s": 2700,
+    "wake_timeout_s": 10800,
+    "wake_budget_usd": 25.0,
+    "review_lenses": ["plan-conformance", "partial-failure", "documentation-truth"]
   },
   "agent": {
     "permission_mode": "bypassPermissions",
-    "default_model": "sonnet",
-    "default_effort": "low",
-    "turn_timeout_s": 2700,
-    "max_budget_usd": 5.0
+    "default_tier": "standard"
+  },
+  "journal": {
+    "max_bytes": 1048576
   },
   "verify": [
     {"name": "example", "cmd": "true"}

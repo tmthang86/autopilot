@@ -109,6 +109,36 @@ Commit `config.json`. It is the contract between the project and the runner.
 Because it is tracked, **an uncommitted edit to it is reverted** the moment any rejection path runs
 `git reset --hard`. Edit, commit, then start.
 
+## The tier ladder and `.autopilot/tiers.local.json`
+
+With the Rust runner, a task's model comes from a **tier** rather than a `model:`/`effort:` label.
+Two config layers agree on the ladder:
+
+- `config.json` carries the tier **names** (`tiers`, `roles`, `pipeline`) and is committed.
+- `.autopilot/tiers.local.json` carries the machine's **bindings** (`tier → harness, model, effort,
+  budget_usd`) and is gitignored, so a second machine re-runs preflight instead of fighting over a
+  committed file.
+
+`autopilot-deliver` establishes the ladder with the operator: it runs `autopilot preflight`, proposes
+bindings from what this machine can actually reach, the operator confirms, and a tier that does not
+resolve stops the flow by name. The proven-adapter table in
+[docs/reference/observed-behaviour.md](../reference/observed-behaviour.md) names which harnesses have
+actually run against their real CLI.
+
+## The dashboard
+
+The optional read-only dashboard renders the run journals. Build and run it only when a person is
+present:
+
+```sh
+cd dashboard && go build -o /tmp/apdash .
+/tmp/apdash --addr 127.0.0.1:8787
+```
+
+It is never invoked by the runner, binds `127.0.0.1` by default, and its failure cannot affect a
+scheduled run. The same facts — including an orphaned role — are available from
+`autopilot status`, so the dashboard is never the only route.
+
 ## Start and stop
 
 ```sh

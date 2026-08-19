@@ -19,4 +19,11 @@ assert_eq "$(cat "$RUNNER_ROOT/VERSION")" \
     "$(jq -r '.plugins[0].version' "$mj")" \
     "marketplace.json agrees with runner/VERSION"
 
+for s in autopilot-planning autopilot-deliver autopilot-review; do
+    assert_eq "1" "$([ -f "$REPO_ROOT/skills/$s/SKILL.md" ] && echo 1 || echo 0)" \
+        "the $s skill exists"
+    assert_contains "$(head -3 "$REPO_ROOT/skills/$s/SKILL.md")" "name: $s" \
+        "$s declares its name in frontmatter"
+done
+
 finish

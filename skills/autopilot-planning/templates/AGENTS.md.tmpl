@@ -1,0 +1,107 @@
+# {{PROJECT_NAME}} — Engineering Rules
+
+{{ONE_PARAGRAPH_DESCRIPTION}}
+
+This project is built like professional software: **plan before code, document everything, and keep
+the docs true.**
+
+---
+
+## 1. Rule Zero: plan first, then build
+
+**Never write code without an approved plan.** There is no exception for "this one is small".
+
+```
+Request → Plan (docs/plans/) → Operator approves → Build to plan → Update docs → Done
+              ↑                                          │
+              └────────── plan wrong? fix the plan ──────┘
+```
+
+| Situation | Required action |
+|---|---|
+| New feature, architecture change, large refactor | Write a plan in `docs/plans/`, wait for approval |
+| Small fix, copy change, styling | No separate plan, but still update docs if behaviour changes |
+| Plan turns out wrong mid-build | **Stop. Fix the plan. Get it re-approved.** Never silently diverge |
+| Part of the plan is blocked | Finish everything else in full, then say plainly what was left out and why |
+
+## 2. Read before you touch the code
+
+{{THE_DOCUMENTS_THAT_COST_SOMETHING_TO_LEARN}}
+
+## 3. The documentation set
+
+**Docs-as-code**: everything is Markdown, lives in this repository, and changes in the same commit
+as the code it describes. Three standards combined: **arc42**, **Diátaxis**, **Nygard ADRs**.
+
+```
+AGENTS.md      the rules — this file, the single source
+README.md      what this is, how to run it
+docs/
+├── README.md      the map, and the status of every document
+├── product/       prd · roadmap · glossary · open-items
+├── architecture/  how it is built
+├── decisions/     ADRs — why it is built that way
+├── reference/     what is it — API behaviour, schema, commands
+├── guides/        how do I — setup, testing, release
+├── explanation/   why — conceptual background
+└── plans/         what next — written before the code
+```
+
+Keep the Diátaxis modes distinct. Blurring them is how documentation rots.
+
+## 4. Documentation sync rules
+
+**A stale document is worse than no document**, because it makes the reader confidently wrong.
+
+Change something on the left, and **you must update the right in the same commit**.
+
+| When you change… | You must update |
+|---|---|
+{{SYNC_TABLE_ROWS}}
+| A document added, removed, or finished | The status table in `docs/README.md` |
+| A question raised with no answer, or debt taken on | `docs/product/open-items.md` |
+
+**"If it cost you, write it down."**
+
+## 5. ADRs
+
+Every **expensive, hard-to-reverse, or contested** decision gets an ADR. Numbered sequentially,
+never reused. Status: `Proposed` → `Accepted` → (`Superseded by ADR-NNNN` | `Deprecated`).
+
+**Never edit an accepted ADR's substance.** Repairing a dead link is maintenance; changing the
+reasoning is not. The test: *after the edit, does the record still say what it said?*
+
+The most important section is **Consequences**, both good and bad.
+
+## 6. Code standards
+
+{{LANGUAGE_SPECIFIC_RULES}}
+
+## 7. Testing
+
+{{TEST_RULES}}
+
+Never claim something works without running the command and reading its output. If it fails, say so
+and show the output.
+
+## 8. Commits
+
+Conventional Commits. One commit is one coherent change **including its documentation**. Commit
+bodies say **why**; the diff already says what.
+
+## 9. Definition of Done
+
+- [ ] Built to the approved plan, or the plan was revised and re-approved
+- [ ] {{GATES}} clean, tests written and **actually run**, output read
+- [ ] The sync table in §4 walked, and every affected document updated
+- [ ] An ADR exists if an architectural decision was made
+- [ ] Exercised in the real application, not only in tests
+
+If any box is unchecked, report it as **not done** and say which one.
+
+---
+
+Other agents' rule files (`CLAUDE.md`, `.clinerules`, Kiro steering files) are pointers to this
+file. Do not copy rules into them. (One measured caveat: a `claude` session loads a project's
+`CLAUDE.md` automatically, so for a claude-first project consider keeping `CLAUDE.md` canonical and
+making `AGENTS.md` the pointer.)

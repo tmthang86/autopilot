@@ -145,8 +145,9 @@ config file the project commits:
 ```
 
 This repository is also a Claude Code plugin (`/plugin marketplace add tmthang86/autopilot`). The
-plugin ships `autopilot-deliver` and `autopilot-review`, and `runner/deploy.sh` copies `runner/` to
-the stable path launchd points at, refusing to overwrite a git checkout.
+plugin ships three skills — `autopilot-planning`, `autopilot-deliver`, and `autopilot-review` —
+and `runner/deploy.sh` copies `runner/` to the stable path launchd points at, refusing to overwrite
+a git checkout.
 
 ---
 

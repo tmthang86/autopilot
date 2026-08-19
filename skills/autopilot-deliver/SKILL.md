@@ -27,6 +27,7 @@ when no plan exists; the operator commits the plan, then invokes this skill agai
 1  ▮ COMMIT GATE — checked mechanically, never asked
      git ls-files --error-unmatch <plan>   must be tracked
      git status --porcelain <plan>         must be empty
+     validate-plan.sh <plan> <root>        must exit 0
      fail → stop and name what is missing. No override.
 2  Prepare the project (each part skipped if already done)
      deploy the runner (deploy.sh aborts if the target is a git checkout)
@@ -36,8 +37,15 @@ when no plan exists; the operator commits the plan, then invokes this skill agai
      TIER LADDER not established?   → autopilot preflight → propose → confirm → write
      any tier unresolved?           → STOP, naming the harness or model that is missing
      config.json uncommitted?       → block; git reset --hard would discard it
-3  Shard — propose the issues
-     each: goal · done-when · verify block · Intent: · Depends on · tier · needs-human
+3  Shard — transcribe, do not interpret
+     each task in the plan becomes one issue, field by field:
+       heading    → issue title
+       Done when  → the done-when section of the body
+       Verify     → the verify block
+       Intent     → the Intent: line
+       Depends on → Depends on #<num>, resolved in phase 5
+       Tier       → label tier:<name>
+       Needs human→ label needs-human
      also write .autopilot/proposed-issues.json (gitignored) for crash recovery
 4  Review — in conversation
      revise until the operator approves: "merge 3 and 4, drop 7, make 5 needs-human"

@@ -240,10 +240,10 @@ against a real repository.
 ### Task 6: The `autopilot-planning` skill
 
 - **Done when:** `skills/autopilot-planning/SKILL.md` exists with valid frontmatter and describes all
-  eight phases, both hard gates, the no-idea branch of phase 0, the four sub-steps of phase 3, the
-  fresh-sub-agent reviews at phases 4 and 7b, the three dispositions and the one-re-review bound at
-  7c and 7d, and the rule that it commits nothing.
-- **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 8
+  nine phases (0–8), both hard gates, the no-idea branch of phase 0, the four sub-steps of phase 3,
+  the fresh-sub-agent reviews at phases 4 and 7b, the three dispositions and the one-re-review bound
+  at 7c and 7d, and the rule that it commits nothing.
+- **Verify:** `head -4 skills/autopilot-planning/SKILL.md` → shows `name:` and `description:`; `grep -c '^## Phase' skills/autopilot-planning/SKILL.md` → 9
 - **Intent:** docs/design/2026-08-16-multi-harness-role-pipeline-design.md
 - **Depends on:** Task 5
 - **Tier:** deep

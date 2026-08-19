@@ -80,7 +80,31 @@ stop.** It belongs in the config schema instead.
   runner; `go vet` and `gofmt -l` clean for the dashboard; `shellcheck` clean for any shell that
   remains (the skills and the test harness).
 
-## 5. Documentation
+## 5. Documentation sync rules
+
+**A stale document is worse than no document**, because it makes the reader confidently wrong.
+
+The table below is binding. Change something on the left, and **you must update the right in the
+same commit**. Never defer a documentation update.
+
+| When you change… | You must update |
+|---|---|
+| A module under `runner/src/` | The architecture section of the design it implements |
+| The config schema in `runner/templates/config-tiered.json` | `docs/guides/install.md` and the tier section of the current design |
+| An invariant in §2 | The design that states it, plus the test that fails when it is removed |
+| Behaviour of `gh`, `git`, or a harness CLI learned the hard way | `docs/reference/observed-behaviour.md` ← **highest priority** |
+| A pick of tool, technique, or a reversed decision | A new ADR under `docs/decisions/` |
+| Anything an operator does differently | `docs/guides/install.md` |
+| A document added, removed, or finished | The status table in `docs/README.md` |
+| A question raised with no answer, or debt taken on | `docs/product/open-items.md` |
+
+**"If it cost you, write it down."** Every hour lost to surprising CLI behaviour goes into
+`docs/reference/observed-behaviour.md` immediately, with the date and how it was observed. That is
+worth more than the next feature.
+
+Before calling anything done, walk this table row by row.
+
+## 6. Documentation
 
 - `docs/plans/` — written before code, following `_template.md`
 - `docs/design/` — validated designs, written before the plans that implement them
@@ -91,15 +115,16 @@ stop.** It belongs in the config schema instead.
   about the agent CLI, `gh`, or usage limits goes here the moment it is learned, with the date
   and how it was observed. This file is the reason the next person does not pay twice.
 
-## 6. Commits
+## 7. Commits
 
 Conventional Commits. One commit is one coherent change including its docs. Commit bodies
 state **why**; the diff already states what.
 
-## 7. Definition of Done
+## 8. Definition of Done
 
 - [ ] Built to the approved plan, or the plan was revised and re-approved
-- [ ] `shellcheck` clean, tests written and **actually run**, output read
+- [ ] `cargo clippy`/`cargo test` (Rust), `go vet`/`go test` (Go), or `shellcheck` (shell) clean —
+  tests written and **actually run**, output read
 - [ ] Every §2 invariant still holds on error paths, not just the happy path
 - [ ] Docs updated in the same commit
 - [ ] Exercised against a real repository, not only in tests

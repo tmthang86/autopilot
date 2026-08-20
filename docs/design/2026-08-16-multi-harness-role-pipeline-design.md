@@ -275,6 +275,7 @@ Layer 1, `.autopilot/config.json` — committed, the project's contract:
                 "review":    {"tier_offset": 1} },
   "pipeline": { "max_rounds": 2, "turn_timeout_s": 2700,
                 "wake_timeout_s": 10800, "wake_budget_usd": 25.0,
+                "verify_timeout_s": 600,
                 "review_lenses": ["plan-conformance", "partial-failure",
                                   "documentation-truth"] },
   "agent":    { "permission_mode": "bypassPermissions", "default_tier": "standard" },

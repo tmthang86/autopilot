@@ -15,6 +15,9 @@ pub fn default_autonomy() -> String {
 pub fn default_max_bytes() -> u64 {
     1 << 20
 }
+pub fn default_verify_timeout() -> u64 {
+    600
+}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ProjectConfig {
@@ -55,6 +58,8 @@ pub struct PipelineConfig {
     pub wake_budget_usd: f64,
     #[serde(default)]
     pub review_lenses: Vec<String>,
+    #[serde(default = "default_verify_timeout")]
+    pub verify_timeout_s: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]

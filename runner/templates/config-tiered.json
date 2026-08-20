@@ -22,6 +22,7 @@
     "turn_timeout_s": 2700,
     "wake_timeout_s": 10800,
     "wake_budget_usd": 25.0,
+    "verify_timeout_s": 600,
     "review_lenses": ["plan-conformance", "partial-failure", "documentation-truth"]
   },
   "agent": {

@@ -27,7 +27,7 @@ pub fn run(cfg: &Config, project: &Path) -> Result<(), VerifyFailure> {
         crate::log::info(&format!("verify: {}", v.name));
         let mut cmd = std::process::Command::new("sh");
         cmd.arg("-c").arg(&v.cmd).current_dir(project);
-        match crate::spawn::run_capture(&mut cmd, b"", 600) {
+        match crate::spawn::run_capture(&mut cmd, b"", cfg.pipeline.verify_timeout_s) {
             Ok(SpawnOutcome::Exited(o)) if o.status.success() => {}
             Ok(SpawnOutcome::Exited(o)) => {
                 let mut output = String::from_utf8_lossy(&o.stderr).into_owned();

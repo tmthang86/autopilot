@@ -68,3 +68,35 @@ fn commands_run_inside_the_project_root() {
     let cfg = config_with_verify(&repo, r#"[{"name":"cwd","cmd":"test -f seed.txt"}]"#);
     assert!(verify::run(&cfg, &repo).is_ok());
 }
+
+#[test]
+fn a_configured_timeout_bounds_a_single_verify_command() {
+    let repo = make_repo();
+    let ap = repo.join(".autopilot");
+    std::fs::create_dir_all(&ap).expect("mkdir");
+    let cfg = r#"{
+            "project": {"main_branch": "main", "work_branch": "autopilot/main"},
+            "queue": {"ready_label": "autopilot", "exclude_labels": [], "intent_marker": "Intent:"},
+            "tiers": ["light"],
+            "roles": {"implement": {"tier_offset": 0}, "test": {"tier_offset": 0}, "review": {"tier_offset": 1}},
+            "pipeline": {"max_rounds": 2, "turn_timeout_s": 60, "wake_timeout_s": 600, "wake_budget_usd": 25.0, "review_lenses": [], "verify_timeout_s": 1},
+            "agent": {"permission_mode": "bypassPermissions", "default_tier": "light"},
+            "verify": [{"name":"slow","cmd":"sleep 5"}],
+            "pacing": {"daily_task_cap": 12, "max_attempts_per_issue": 2, "circuit_breaker_failures": 3},
+            "autonomy": {"prepare_only_label": "needs-human"}
+        }"#;
+    std::fs::write(ap.join("config.json"), cfg).expect("cfg");
+    std::fs::write(
+        ap.join("tiers.local.json"),
+        r#"{"light": {"harness": "dummy", "model": "m", "effort": "low"}}"#,
+    )
+    .expect("bindings");
+    let cfg = Config::load(&repo).expect("load");
+    let start = std::time::Instant::now();
+    let err = verify::run(&cfg, &repo).expect_err("a sleep past the timeout must fail");
+    assert!(
+        start.elapsed().as_secs() < 4,
+        "killed by the configured timeout, not by the command finishing"
+    );
+    assert!(err.output.contains("timed out"));
+}

@@ -83,6 +83,12 @@ commit. An empty list is refused rather than treated as success.
 **`pacing`** — `daily_task_cap`, `quiet_hours` (e.g. `["09:00-18:00"]` to stay out of your working
 day), `circuit_breaker_failures`.
 
+**`pipeline`** — `max_rounds` caps the tester↔reviewer loop, `turn_timeout_s` bounds one agent
+call, `wake_timeout_s` is the hard ceiling for the whole wake, and `wake_budget_usd` is best-effort
+spend. `verify_timeout_s` (default 600) bounds each single `verify` command — a verify command that
+outlives it is reported as timed out rather than hanging the wake. `review_lenses` names the final
+review calls that always run.
+
 **`autonomy.prepare_only_label`** — issues carrying this label are implemented and committed but
 never closed, because their correctness needs a person to look. Defaults to `needs-human`.
 

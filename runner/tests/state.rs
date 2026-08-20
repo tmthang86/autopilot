@@ -66,3 +66,22 @@ fn attempts_are_counted_and_evicted() {
     s.clear_attempt(7);
     assert_eq!(s.attempt_count(7), 0);
 }
+
+#[test]
+fn a_non_object_attempts_field_does_not_panic() {
+    // A crash or a hand edit can leave a valid-JSON `attempts` that is not an
+    // object. record_attempt must rebuild it, not panic mid-run (Rule Zero).
+    let d = tmpdir();
+    let f = d.join("state.json");
+    std::fs::write(&f, r#"{"attempts": 3}"#).expect("write");
+    let mut s = State::init(&f).expect("init");
+    assert_eq!(
+        s.record_attempt(5),
+        1,
+        "counting restarts from an empty map"
+    );
+    assert_eq!(s.attempt_count(5), 1);
+    s.save().expect("save");
+    let s2 = State::init(&f).expect("re-init");
+    assert_eq!(s2.attempt_count(5), 1, "the rebuilt map round-trips");
+}

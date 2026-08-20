@@ -117,9 +117,13 @@ impl State {
     }
 
     fn ensure_attempts(&mut self) -> &mut Map<String, Value> {
-        self.data
-            .entry("attempts".to_string())
-            .or_insert_with(|| json!({}));
+        // The file is untrusted input of a sort: a crash or a hand edit can
+        // leave a valid JSON `attempts` that is not an object, and the runner
+        // must not panic mid-task on it — Rule Zero. Rebuild the field as an
+        // empty object rather than assuming the shape.
+        if !self.data.get("attempts").is_some_and(|a| a.is_object()) {
+            self.data.insert("attempts".into(), json!({}));
+        }
         self.data
             .get_mut("attempts")
             .and_then(|a| a.as_object_mut())

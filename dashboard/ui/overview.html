@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><title>autopilot</title><script src="/htmx.min.js" defer></script></head>
 <body>
 <h1>autopilot</h1>
-<div id="live" hx-get="/fragment/live" hx-trigger="every 10s" hx-swap="outerHTML">
+<div id="live" hx-get="/fragment/live" hx-trigger="every 10s" hx-swap="outerHTML" hx-select="#live">
   <section id="orphans">
     <h2>orphaned roles</h2>
     {{if .Orphans}}

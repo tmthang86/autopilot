@@ -112,9 +112,44 @@ pub fn run_role(
         timeout_s: cfg.pipeline.turn_timeout_s,
         permission_mode: &cfg.agent.permission_mode,
     };
-    let outcome = harness
-        .run(prompt, project, &log, &params)
-        .map_err(|e| e.to_string())?;
+    let outcome = match harness.run(prompt, project, &log, &params) {
+        Ok(o) => o,
+        Err(e) => {
+            // A role that could not even start must still close its journal
+            // entry — a bare `role_start` reads as a role that died silently.
+            // Classify by probe, the same way a non-zero exit is: a probe that
+            // succeeds means the task is innocent and the attempt is consumed;
+            // one that fails means the provider is gone (invariant 2) and the
+            // pipeline must back off, not burn an attempt.
+            let classify = if harness.probe(Some(&binding.model)) {
+                Classification::TaskFailure
+            } else {
+                Classification::ProviderUnavailable
+            };
+            journal
+                .append(Event::RoleEnd {
+                    role: role.to_string(),
+                    round,
+                    tier: tier_name.to_string(),
+                    classify: classify_name(&classify).to_string(),
+                    cost_usd: None,
+                    cost_source: CostSource::Unknown,
+                    duration_s: 0,
+                    lens: lens.map(str::to_string),
+                })
+                .ok();
+            return if classify == Classification::ProviderUnavailable {
+                Ok(RoleResult {
+                    classify,
+                    cost_usd: None,
+                    cost_source: CostSource::Unknown,
+                    duration_s: 0,
+                })
+            } else {
+                Err(e.to_string())
+            };
+        }
+    };
     let classify = harness.classify(&outcome);
 
     journal

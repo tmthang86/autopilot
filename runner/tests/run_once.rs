@@ -258,6 +258,10 @@ fn usage_exhaustion_consumes_no_retry() {
         v["consecutive_failures"], 0,
         "exhaustion is not a task failure"
     );
+    assert_eq!(
+        v["tasks_today"], 0,
+        "a provider outage must not consume the daily cap"
+    );
     assert!(
         v["resume_after"].as_i64().expect("num") > 0,
         "resume_after is set into the future"

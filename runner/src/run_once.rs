@@ -167,6 +167,8 @@ pub fn run(project: &Path) -> ExitCode {
                 outcome: "provider_unavailable".into(),
             });
             backoff(&mut state);
+            // Never attempted: an outage must not consume the day tasks.
+            state.set_num("tasks_today", (state.get_num("tasks_today", 0) - 1).max(0));
         }
     }
 
@@ -189,10 +191,7 @@ fn stood_down(journal: &mut crate::journal::Journal, issue: Option<u64>, tier: O
 }
 fn backoff(state: &mut State) {
     let step = state.get_num("backoff_step", 0);
-    let mut seconds = 900 * (step + 1);
-    if seconds > 3600 {
-        seconds = 3600;
-    }
+    let seconds = (900 * (step + 1)).min(3600);
     state.set_num("resume_after", crate::log::unix_now() as i64 + seconds);
     state.bump("backoff_step");
     state.save().ok();

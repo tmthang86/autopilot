@@ -45,7 +45,15 @@ pub fn date_today() -> String {
 }
 
 pub fn wake_id() -> String {
-    format!("w-{}", unix_now())
+    // Seconds alone collide when two wakes land in the same second, and a
+    // collision reuses the verdict directory path for a role — which
+    // `verdict::prepare` then refuses as pre-existing. Nanos keep the id
+    // unique even for back-to-back wakes.
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    format!("w-{}-{nanos}", unix_now())
 }
 
 pub fn info(msg: &str) {

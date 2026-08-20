@@ -71,3 +71,36 @@ func TestBuildViewsTreatsAMissingJournalAsEmptyNotAnError(t *testing.T) {
 		t.Fatalf("a project that has never run yet must not show as errored: %q", views[0].Err)
 	}
 }
+
+func TestBuildViewsCountsOrphansAcrossRolledJournals(t *testing.T) {
+	jobs := t.TempDir()
+	proj := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(filepath.Join(proj, ".autopilot"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The orphan lives in a rolled journal; the current journal is clean.
+	cur := "{\"wake\":\"w-2\",\"event\":\"role_start\",\"role\":\"test\",\"round\":0}\n" +
+		"{\"wake\":\"w-2\",\"event\":\"role_end\",\"role\":\"test\",\"round\":0}\n"
+	rolled := "{\"wake\":\"w-1\",\"event\":\"role_start\",\"role\":\"review\",\"round\":1}\n"
+	if err := os.WriteFile(filepath.Join(proj, ".autopilot/journal.jsonl"), []byte(cur), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, ".autopilot/journal-2026-08-19.jsonl"), []byte(rolled), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writePlistFixture(t, jobs, "demo", proj)
+
+	views := buildViews(jobs)
+	if len(views) != 1 {
+		t.Fatalf("want 1 project view, got %d", len(views))
+	}
+	if views[0].Err != "" {
+		t.Fatalf("rolled journals must not break the view: %q", views[0].Err)
+	}
+	if len(views[0].Orphans) != 1 {
+		t.Fatalf("want 1 orphan from the rolled journal, got %d", len(views[0].Orphans))
+	}
+	if views[0].Orphans[0].Role != "review" {
+		t.Fatalf("want the review orphan, got %q", views[0].Orphans[0].Role)
+	}
+}

@@ -2,11 +2,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -84,13 +86,54 @@ func buildViews(jobs string) []ProjectView {
 	return views
 }
 
+// readJournal reads every journal file the runner has written: the current
+// journal.jsonl plus any rolled journal-<date>.jsonl files. A roll renames the
+// old file away, so a reader that stopped at journal.jsonl went blind the
+// moment the journal first grew past its size cap — orphan detection and cost
+// figures silently covered only the newest file.
 func readJournal(path string) ([]Event, error) {
-	f, err := os.Open(filepath.Join(path, ".autopilot/journal.jsonl"))
+	dir := filepath.Join(path, ".autopilot")
+	if _, err := os.Stat(filepath.Join(dir, "journal.jsonl")); err != nil {
+		return nil, err // os.IsNotExist → "no task has run yet" to the caller
+	}
+	files, err := journalFiles(dir)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return ParseJournal(f)
+	var events []Event
+	for _, f := range files {
+		fh, err := os.Open(f)
+		if err != nil {
+			return nil, err
+		}
+		evs, perr := ParseJournal(fh)
+		fh.Close()
+		if perr != nil {
+			return nil, fmt.Errorf("%s: %w", f, perr)
+		}
+		events = append(events, evs...)
+	}
+	return events, nil
+}
+
+// journalFiles lists the current journal.jsonl first, then the rolled
+// journal-<date>.jsonl files in name order. Consumers only count/map, so the
+// order is cosmetic, but the current file first keeps the file that is still
+// being appended at the front of any event stream.
+func journalFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var rolled []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, "journal-") && strings.HasSuffix(name, ".jsonl") {
+			rolled = append(rolled, filepath.Join(dir, name))
+		}
+	}
+	sort.Strings(rolled)
+	return append([]string{filepath.Join(dir, "journal.jsonl")}, rolled...), nil
 }
 
 // inFlight counts started-but-not-ended roles. Keyed the same way Orphans is

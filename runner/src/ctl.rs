@@ -128,45 +128,6 @@ pub fn status(project: &Path) -> i32 {
             .map(|s| s.get_num("tasks_today", 0))
             .unwrap_or(0)
     );
-    report_orphans(project);
+    crate::orphans::report(project);
     0
-}
-
-fn report_orphans(project: &Path) {
-    let path = project.join(".autopilot/journal.jsonl");
-    let body = match std::fs::read_to_string(&path) {
-        Ok(b) => b,
-        Err(_) => return,
-    };
-    let mut starts: std::collections::HashMap<(String, String, u32, String), ()> =
-        std::collections::HashMap::new();
-    let mut ends: std::collections::HashSet<(String, String, u32, String)> =
-        std::collections::HashSet::new();
-    for line in body.lines() {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        let Some(event) = v.get("event").and_then(|e| e.as_str()) else {
-            continue;
-        };
-        let wake = v.get("wake").and_then(|w| w.as_str()).unwrap_or("");
-        let role = v.get("role").and_then(|r| r.as_str()).unwrap_or("");
-        let round = v.get("round").and_then(|r| r.as_u64()).unwrap_or(0) as u32;
-        let lens = v.get("lens").and_then(|l| l.as_str()).unwrap_or("");
-        let key = (wake.to_string(), role.to_string(), round, lens.to_string());
-        match event {
-            "role_start" => {
-                starts.insert(key.clone(), ());
-            }
-            "role_end" => {
-                ends.insert(key);
-            }
-            _ => {}
-        }
-    }
-    for key in starts.keys() {
-        if !ends.contains(key) {
-            println!("orphaned: role {} never finished (wake {})", key.1, key.0);
-        }
-    }
 }

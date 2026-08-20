@@ -49,6 +49,38 @@ fn status_names_an_orphaned_role() {
 }
 
 #[test]
+fn orphan_report_reads_rolled_journals() {
+    let _g = prepend_stubs();
+    let (repo, _) = setup();
+    set_stub("launchctl", "case \"$1\" in print) exit 1 ;; esac; exit 0");
+    let ap = repo.join(".autopilot");
+    std::fs::create_dir_all(&ap).expect("mkdir");
+    // The current journal holds a completed role; the rolled journal holds the
+    // orphan. Only a scan across both files finds it.
+    std::fs::write(
+        ap.join("journal.jsonl"),
+        "{\"ts\":\"x\",\"wake\":\"w-2\",\"event\":\"role_start\",\"role\":\"test\",\"round\":0}\n{\"ts\":\"x\",\"wake\":\"w-2\",\"event\":\"role_end\",\"role\":\"test\",\"round\":0}\n",
+    )
+    .expect("journal");
+    std::fs::write(
+        ap.join("journal-2026-08-19.jsonl"),
+        "{\"ts\":\"x\",\"wake\":\"w-1\",\"event\":\"role_start\",\"role\":\"review\",\"round\":1}\n",
+    )
+    .expect("rolled");
+    let report = autopilot::orphans::orphan_report(&repo);
+    assert!(
+        report
+            .iter()
+            .any(|l| l.contains("review") && l.contains("w-1")),
+        "an orphan in a rolled journal is named: {report:?}"
+    );
+    assert!(
+        !report.iter().any(|l| l.contains("test")),
+        "a completed role is not an orphan: {report:?}"
+    );
+}
+
+#[test]
 fn the_plist_path_is_overridable() {
     let jobs = tmpdir();
     std::env::set_var("AUTOPILOT_PLIST_DIR", &jobs);

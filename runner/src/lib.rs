@@ -16,6 +16,7 @@ pub mod intent;
 pub mod journal;
 pub mod label;
 pub mod log;
+pub mod orphans;
 pub mod pipeline;
 pub mod pipeline_implement;
 pub mod pipeline_land;

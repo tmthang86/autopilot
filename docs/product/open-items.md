@@ -31,3 +31,5 @@ is recorded here in the same commit.
 | `wake_budget_usd` is best-effort where the harness reports cost | 2026-08-16 | Only `claude` and `pi` report cost today; `wake_timeout_s` is the enforceable ceiling |
 | `autonomy.default` is declared but unread | 2026-08-16 | One autonomy class today; giving it more classes is a design question, not a port |
 | The shell runner remains alongside the Rust binary until the cutover | 2026-08-19 | Two implementations overlap; the shell is deleted only after a real run |
+| A re-queued paused task restarts from the accumulation branch — the WIP commit is preserved for a person, never resumed by the runner | 2026-08-20 | The WIP survives on the remote for manual recovery; automatic resume would risk merging unverified commits whose own message says they must not merge. Recovery is the coordinator's job in a human session |
+| `roles.context_docs` is declared and shipped in the template but never read | 2026-08-20 | Declared-but-unread key like `autonomy.default`; either read it into the role prompts or drop it |

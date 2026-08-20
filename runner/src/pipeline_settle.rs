@@ -17,14 +17,17 @@ pub fn pause(cfg: &Config, project: &Path, queue: &Queue, issue: u64, reason: &s
     );
     let pushed = committed && crate::settle::push_head(project);
     // Never claim "safely parked" when it might not be on disk or the remote —
-    // a paused task is only resumable from what actually landed.
+    // the WIP commit is a record for a person to recover. The runner itself
+    // does NOT resume from it: a re-queued task restarts from the accumulation
+    // branch (see open-items, "paused tasks restart from the accumulation
+    // branch").
     let status = if pushed {
-        "This commit was pushed to the remote."
+        "The work is preserved in a WIP commit on this machine's task branch and was pushed to the remote, so it survives losing the machine. The runner will NOT resume it automatically: recovering the work is a person's job, and a re-queued task restarts from the accumulation branch."
     } else if committed {
         crate::log::error(&format!(
             "#{issue} paused but the WIP commit could not be pushed — the work exists only on this machine"
         ));
-        "The work is committed locally but could NOT be pushed to the remote; it exists only on this machine."
+        "The work is preserved in a local WIP commit but could NOT be pushed; it exists only on this machine. The runner will NOT resume it automatically."
     } else {
         crate::log::error(&format!(
             "#{issue} paused but nothing could be committed — no work was saved"

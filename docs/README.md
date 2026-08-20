@@ -27,6 +27,7 @@ than an honest gap.
 |---|---|
 | [reference/observed-behaviour.md](reference/observed-behaviour.md) | ✅ Current — seven defects and the 2026-08-19 harness measurements recorded |
 | [guides/install.md](guides/install.md) | ✅ Current |
+| [guides/cutover-verification.md](guides/cutover-verification.md) | ✅ Current — runbook for the six needs-human items |
 | [decisions/0001-one-task-per-wake-over-persistent-daemon.md](decisions/0001-one-task-per-wake-over-persistent-daemon.md) | ✅ Accepted |
 | [decisions/0002-off-until-explicitly-started.md](decisions/0002-off-until-explicitly-started.md) | ✅ Accepted |
 | [decisions/0003-plist-lives-with-the-project.md](decisions/0003-plist-lives-with-the-project.md) | ⚠️ Superseded by ADR-0004 |
